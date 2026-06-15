@@ -3,7 +3,7 @@ from pathlib import Path
 from hwfont_schema.enums import Kind, PositionInWord, Quality, ReviewStatus
 from hwfont_schema.geometry import BBox
 from hwfont_schema.sample import Context, Metrics, Sample, Target
-from hwfont_schema.store import GlyphStore
+from hwfont_schema.store import CoverageRow, GlyphStore
 from hwfont_schema.strokes import Contour, StrokeData, StrokePoint
 
 
@@ -68,3 +68,28 @@ def test_strokes_path_survives_round_trip(tmp_path: Path):
     reopened.close()
 
     assert got[0].strokes_path == "strokes/s1.json"
+
+
+def test_samples_for_filters_by_position(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    store.add_sample(_sample("s1", "a", PositionInWord.initial))
+    store.add_sample(_sample("s2", "a", PositionInWord.final))
+    only_final = store.samples_for("a", position=PositionInWord.final)
+    store.close()
+
+    assert [s.id for s in only_final] == ["s2"]
+
+
+def test_coverage_counts_accepted_samples_against_targets(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    store.add_target(Target(label="a", kind=Kind.single, required_count=2))
+    store.add_target(Target(label="eft", kind=Kind.ligature, required_count=3))
+    store.add_sample(_sample("s1", "a"))
+    store.add_sample(_sample("s2", "a"))
+    coverage = {row.label: row for row in store.coverage()}
+    store.close()
+
+    assert coverage["a"] == CoverageRow(label="a", kind="single", required=2, accepted=2, met=True)
+    assert coverage["eft"] == CoverageRow(
+        label="eft", kind="ligature", required=3, accepted=0, met=False
+    )

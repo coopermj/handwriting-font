@@ -5,6 +5,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from hwfont_schema.enums import PositionInWord
 from hwfont_schema.sample import Sample, Target
 from hwfont_schema.strokes import StrokeData
 
@@ -106,8 +107,44 @@ class GlyphStore:
         self._conn.commit()
         return sample
 
-    def samples_for(self, label: str) -> list[Sample]:
-        rows = self._conn.execute(
-            "SELECT data FROM sample WHERE label = ? ORDER BY id", (label,)
-        ).fetchall()
+    def samples_for(
+        self, label: str, position: PositionInWord | None = None
+    ) -> list[Sample]:
+        if position is None:
+            rows = self._conn.execute(
+                "SELECT data FROM sample WHERE label = ? ORDER BY id", (label,)
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT data FROM sample WHERE label = ? AND position_in_word = ? ORDER BY id",
+                (label, position.value),
+            ).fetchall()
         return [Sample.model_validate_json(row[0]) for row in rows]
+
+    def add_target(self, target: Target) -> None:
+        self._conn.execute(
+            "INSERT OR REPLACE INTO target (label, kind, required_count) VALUES (?, ?, ?)",
+            (target.label, target.kind.value, target.required_count),
+        )
+        self._conn.commit()
+
+    def coverage(self) -> list[CoverageRow]:
+        rows = self._conn.execute(
+            "SELECT label, kind, required_count FROM target ORDER BY label"
+        ).fetchall()
+        result: list[CoverageRow] = []
+        for label, kind, required in rows:
+            (accepted,) = self._conn.execute(
+                "SELECT COUNT(*) FROM sample WHERE label = ? AND review_status = 'accepted'",
+                (label,),
+            ).fetchone()
+            result.append(
+                CoverageRow(
+                    label=label,
+                    kind=kind,
+                    required=required,
+                    accepted=accepted,
+                    met=accepted >= required,
+                )
+            )
+        return result
