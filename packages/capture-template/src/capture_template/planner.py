@@ -50,15 +50,37 @@ def _score(text: str, targets: list[Target], deficit: dict[str, int]) -> int:
     )
 
 
-def plan(targets: list[Target], candidates: list[str], line_cap: int = 200) -> PlanResult:
+def _drill_lines(label: str, needed: int, drill_budget: int) -> list[str]:
+    """Lines repeating `label` (space-separated), each within `drill_budget` chars.
+
+    Returns [] if a single occurrence cannot fit the budget (label longer than budget)."""
+    if len(label) > drill_budget or needed <= 0:
+        return []
+    per_line = max(1, (drill_budget + 1) // (len(label) + 1))  # tokens that fit "lab lab ..."
+    lines: list[str] = []
+    remaining = needed
+    while remaining > 0:
+        take = min(per_line, remaining)
+        lines.append(" ".join([label] * take))
+        remaining -= take
+    return lines
+
+
+def plan(
+    targets: list[Target],
+    candidates: list[str],
+    line_cap: int = 200,
+    drill_budget: int = 60,
+) -> PlanResult:
     deficit = {t.label: t.required_count for t in targets}
     achieved_natural = {t.label: 0 for t in targets}
+    achieved_drill = {t.label: 0 for t in targets}
 
-    pool = list(enumerate(candidates))  # (original_index, text)
+    pool = list(enumerate(candidates))
     lines: list[PromptLine] = []
 
     while len(lines) < line_cap and any(d > 0 for d in deficit.values()):
-        best = None  # (neg_score, length, text, index)
+        best = None
         for idx, text in pool:
             score = _score(text, targets, deficit)
             if score <= 0:
@@ -76,7 +98,17 @@ def plan(targets: list[Target], candidates: list[str], line_cap: int = 200) -> P
             achieved_natural[t.label] += occ
             deficit[t.label] = max(0, deficit[t.label] - occ)
 
-    coverage = _coverage(targets, achieved_natural, {t.label: 0 for t in targets})
+    # Drill-fill any target still short. Iterate targets in a stable order.
+    for t in targets:
+        if deficit[t.label] <= 0:
+            continue
+        for drill_text in _drill_lines(t.label, deficit[t.label], drill_budget):
+            lines.append(PromptLine(text=drill_text, is_drill=True))
+            occ = count_occurrences(drill_text, t.label)
+            achieved_drill[t.label] += occ
+            deficit[t.label] = max(0, deficit[t.label] - occ)
+
+    coverage = _coverage(targets, achieved_natural, achieved_drill)
     return PlanResult(lines=lines, coverage=coverage, all_met=all(r.met for r in coverage))
 
 

@@ -39,3 +39,27 @@ def test_plan_is_deterministic_with_stable_tie_breaking():
     assert first == second
     # tie broken by (shorter, then lexicographic, then index): "bat" and "cat" same length -> lexicographic
     assert first[0].text == "bat"
+
+
+def test_plan_drill_fills_rare_ligature_absent_from_corpus():
+    # corpus has no "eft"; planner must drill-fill it and flag the line as a drill
+    targets = [Target(label="eft", kind=Kind.ligature, required_count=3)]
+    candidates = ["the cat sat", "a dog ran"]
+    result = plan(targets, candidates)
+    assert result.all_met is True
+    drills = [line for line in result.lines if line.is_drill]
+    assert drills, "expected at least one drill line"
+    assert "eft" in drills[0].text
+    cov = {r.label: r for r in result.coverage}
+    assert cov["eft"].source == "drill"
+    assert cov["eft"].met is True
+
+
+def test_plan_reports_unmet_target_when_drill_budget_too_small():
+    # a ligature longer than the drill budget can never be placed -> unmet, not dropped
+    targets = [Target(label="abcdefgh", kind=Kind.ligature, required_count=1)]
+    result = plan(targets, [], drill_budget=4)
+    assert result.all_met is False
+    cov = {r.label: r for r in result.coverage}
+    assert cov["abcdefgh"].met is False
+    assert cov["abcdefgh"].source == "none"
