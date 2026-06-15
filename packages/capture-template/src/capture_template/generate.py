@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from pathlib import Path
 
 from hwfont_schema import Kind
@@ -37,36 +38,41 @@ def generate(
     out_dir = Path(out_dir)
     if out_dir.exists() and not force:
         raise FileExistsError(f"output dir already exists: {out_dir} (use force=True to overwrite)")
+    created = not out_dir.exists()
     out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        config = config or _default_config()
+        targets = (
+            load_target_spec(target_spec_path) if target_spec_path is not None else default_targets()
+        )
 
-    config = config or _default_config()
-    targets = (
-        load_target_spec(target_spec_path) if target_spec_path is not None else default_targets()
-    )
+        charset = {t.label for t in targets if t.kind == Kind.single}
+        sources = (
+            sorted(Path(corpus_dir).glob("*.txt")) if corpus_dir is not None else default_corpus_paths()
+        )
+        candidates = load_corpus(list(sources), charset)
 
-    charset = {t.label for t in targets if t.kind == Kind.single}
-    sources = (
-        sorted(Path(corpus_dir).glob("*.txt")) if corpus_dir is not None else default_corpus_paths()
-    )
-    candidates = load_corpus(list(sources), charset)
+        result = plan(targets, candidates)
+        model: LayoutModel = build_layout(result.lines, targets, config)
 
-    result = plan(targets, candidates)
-    model: LayoutModel = build_layout(result.lines, targets, config)
+        render_pdf(model, out_dir / "capture.pdf")
+        (out_dir / "capture.sidecar.json").write_text(
+            build_sidecar(model).model_dump_json(), encoding="utf-8"
+        )
+        (out_dir / "targets.json").write_text(
+            json.dumps([t.model_dump(mode="json") for t in targets]), encoding="utf-8"
+        )
 
-    render_pdf(model, out_dir / "capture.pdf")
-    (out_dir / "capture.sidecar.json").write_text(
-        build_sidecar(model).model_dump_json(), encoding="utf-8"
-    )
-    (out_dir / "targets.json").write_text(
-        json.dumps([t.model_dump(mode="json") for t in targets]), encoding="utf-8"
-    )
-
-    unmet = [r.label for r in result.coverage if not r.met]
-    print(f"Generated {len(result.lines)} prompt lines across {len(model.pages)} page(s).")
-    print(f"Coverage: {sum(r.met for r in result.coverage)}/{len(result.coverage)} targets met.")
-    if unmet:
-        print(f"UNMET targets ({len(unmet)}): {', '.join(unmet)}")
-    return result
+        unmet = [r.label for r in result.coverage if not r.met]
+        print(f"Generated {len(result.lines)} prompt lines across {len(model.pages)} page(s).")
+        print(f"Coverage: {sum(r.met for r in result.coverage)}/{len(result.coverage)} targets met.")
+        if unmet:
+            print(f"UNMET targets ({len(unmet)}): {', '.join(unmet)}")
+        return result
+    except Exception:
+        if created:
+            shutil.rmtree(out_dir, ignore_errors=True)
+        raise
 
 
 def main(argv: list[str] | None = None) -> int:
