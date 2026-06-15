@@ -53,3 +53,21 @@ def test_default_corpus_loads_usable_sentences():
     charset = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ .,!?'-;:")
     sentences = load_corpus(default_corpus_paths(), charset, min_chars=12, max_chars=120)
     assert len(sentences) >= 10
+
+
+def test_default_corpus_has_healthy_usable_pool_at_default_budget():
+    from capture_template.corpus import default_corpus_paths
+    from capture_template.targets import default_targets
+    from capture_template.planner import plan
+    from hwfont_schema import Kind
+
+    targets = default_targets()
+    charset = {t.label for t in targets if t.kind == Kind.single}
+    # generate() uses the default max_chars=90; the bundled corpus must yield a
+    # healthy pool of natural sentences at that budget (not get mostly filtered out).
+    candidates = load_corpus(default_corpus_paths(), charset, max_chars=90)
+    assert len(candidates) >= 12
+
+    result = plan(targets, candidates)
+    natural = [line for line in result.lines if not line.is_drill]
+    assert len(natural) >= 10

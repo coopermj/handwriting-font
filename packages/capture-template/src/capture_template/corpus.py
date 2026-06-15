@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 import re
 from importlib import resources
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 _WHITESPACE = re.compile(r"\s+")
@@ -29,17 +32,27 @@ def load_corpus(
 ) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
+    dropped_length = 0
+    dropped_charset = 0
+    dropped_dup = 0
     for path in paths:
         text = Path(path).read_text(encoding="utf-8")
         for sentence in split_sentences(text):
             if not (min_chars <= len(sentence) <= max_chars):
+                dropped_length += 1
                 continue
             if not sentence_in_charset(sentence, charset):
+                dropped_charset += 1
                 continue
             if sentence in seen:
+                dropped_dup += 1
                 continue
             seen.add(sentence)
             result.append(sentence)
+    logger.info(
+        "corpus: kept %d sentences (dropped %d by length, %d by charset, %d duplicate)",
+        len(result), dropped_length, dropped_charset, dropped_dup,
+    )
     if not result:
         raise ValueError("no usable sentences found in corpus sources")
     return result
