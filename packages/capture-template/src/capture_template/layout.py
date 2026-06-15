@@ -66,7 +66,6 @@ def _validate(config: PageConfig) -> None:
 
 
 def _make_row(text: str, targets: list[Target], config: PageConfig, row_top: int) -> Row:
-    glyph_labels = {t.label for t in targets if t.kind == Kind.single}
     ligature_labels = [t.label for t in targets if t.kind == Kind.ligature]
     bbox_y = row_top + config.prompt_font_px + config.prompt_gap_px
     bbox = BBox(
@@ -78,7 +77,7 @@ def _make_row(text: str, targets: list[Target], config: PageConfig, row_top: int
     return Row(
         prompt_text=text,
         expected_transcript=text,
-        expected_units=[ch for ch in text if ch in glyph_labels],
+        expected_units=[ch for ch in text if not ch.isspace()],
         ligature_targets=[lig for lig in ligature_labels if lig in text],
         bbox=bbox,
         baseline_y=float(bbox_y + config.line_height_px),

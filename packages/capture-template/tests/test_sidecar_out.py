@@ -52,6 +52,19 @@ def test_build_sidecar_matches_layout_and_validates():
     assert region0.bbox == row0.bbox
 
 
+def test_build_sidecar_handles_ligature_only_targets(tmp_path):
+    from hwfont_schema import CaptureSidecar, Kind, Target
+    targets = [Target(label="at", kind=Kind.ligature, required_count=1)]
+    lines = [PromptLine(text="a cat sat", is_drill=False)]
+    model = build_layout(lines, targets, _config())
+    sidecar = build_sidecar(model)
+    # validates (expected_units is non-empty: the transcript's non-space graphemes)
+    assert CaptureSidecar.model_validate_json(sidecar.model_dump_json()) == sidecar
+    region = sidecar.pages[0].regions[0]
+    assert region.expected_units == ["a", "c", "a", "t", "s", "a", "t"]
+    assert region.ligature_targets == ["at"]
+
+
 def test_region_ids_are_unique():
     lines = [PromptLine(text="cat", is_drill=False) for _ in range(15)]  # spans 2 pages
     sidecar = build_sidecar(build_layout(lines, _targets(), _config()))

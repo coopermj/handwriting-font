@@ -15,6 +15,10 @@ from capture_template.sidecar_out import build_sidecar
 from capture_template.targets import default_targets, load_target_spec
 
 
+class UnmetCoverageError(RuntimeError):
+    """Raised when the planned booklet cannot meet every target's required count."""
+
+
 def _default_config() -> PageConfig:
     return PageConfig(
         width_px=1404,
@@ -34,6 +38,7 @@ def generate(
     out_dir: str | Path,
     config: PageConfig | None = None,
     force: bool = False,
+    allow_unmet: bool = False,
 ) -> PlanResult:
     out_dir = Path(out_dir)
     if out_dir.exists() and not force:
@@ -53,6 +58,13 @@ def generate(
         candidates = load_corpus(list(sources), charset)
 
         result = plan(targets, candidates)
+
+        if not result.all_met and not allow_unmet:
+            unmet = [r.label for r in result.coverage if not r.met]
+            raise UnmetCoverageError(
+                f"Booklet cannot meet all targets. Unmet ({len(unmet)}): {', '.join(unmet)}"
+            )
+
         model: LayoutModel = build_layout(result.lines, targets, config)
 
         render_pdf(model, out_dir / "capture.pdf")
@@ -81,14 +93,20 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--corpus-dir", default=None, help="dir of .txt sources (default: bundled)")
     parser.add_argument("--out", required=True, help="output directory")
     parser.add_argument("--force", action="store_true", help="overwrite an existing output dir")
+    parser.add_argument("--allow-unmet", action="store_true", help="write the booklet even if some targets are unmet")
     args = parser.parse_args(argv)
 
-    result = generate(
-        target_spec_path=args.target_spec,
-        corpus_dir=args.corpus_dir,
-        out_dir=args.out,
-        force=args.force,
-    )
+    try:
+        result = generate(
+            target_spec_path=args.target_spec,
+            corpus_dir=args.corpus_dir,
+            out_dir=args.out,
+            force=args.force,
+            allow_unmet=args.allow_unmet,
+        )
+    except UnmetCoverageError as e:
+        print(e)
+        return 1
     return 0 if result.all_met else 1
 
 
