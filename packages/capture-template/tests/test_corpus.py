@@ -36,3 +36,20 @@ def test_load_corpus_raises_when_no_usable_sentences(tmp_path):
     (tmp_path / "a.txt").write_text("123456789!!!\n", encoding="utf-8")
     with pytest.raises(ValueError):
         load_corpus([tmp_path / "a.txt"], set("abc ."), min_chars=4, max_chars=90)
+
+
+from capture_template.corpus import default_corpus_paths
+
+
+def test_default_corpus_paths_exist_and_are_nonempty():
+    paths = default_corpus_paths()
+    assert len(paths) >= 2
+    for p in paths:
+        assert p.exists()
+        assert p.read_text(encoding="utf-8").strip()
+
+
+def test_default_corpus_loads_usable_sentences():
+    charset = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ .,!?'-;:")
+    sentences = load_corpus(default_corpus_paths(), charset, min_chars=12, max_chars=120)
+    assert len(sentences) >= 10

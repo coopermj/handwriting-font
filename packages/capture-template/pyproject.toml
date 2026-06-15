@@ -18,5 +18,8 @@ capture-template = "capture_template.generate:main"
 [tool.hatch.build.targets.wheel]
 packages = ["src/capture_template"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"src/capture_template/data" = "capture_template/data"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

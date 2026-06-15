@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from importlib import resources
 from pathlib import Path
 
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
@@ -42,3 +43,8 @@ def load_corpus(
     if not result:
         raise ValueError("no usable sentences found in corpus sources")
     return result
+
+
+def default_corpus_paths() -> list[Path]:
+    base = resources.files("capture_template") / "data" / "corpus"
+    return [Path(str(base / "literature.txt")), Path(str(base / "speeches.txt"))]
