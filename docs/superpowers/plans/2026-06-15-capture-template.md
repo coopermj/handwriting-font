@@ -1167,7 +1167,7 @@ Expected: FAIL with `ImportError: cannot import name 'default_corpus_paths'`
 
 - [ ] **Step 3: Write the implementation**
 
-Create `src/capture_template/data/corpus/literature.txt` with public-domain prose (Pride and Prejudice / Moby-Dick / A Tale of Two Cities openings — all public domain). Use this exact content:
+Create `src/capture_template/data/corpus/literature.txt` with public-domain prose (Austen, Melville, Dickens, Tolstoy, Brontë, Carroll, Doyle). Use this exact content:
 ```
 It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.
 However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families.
@@ -1177,22 +1177,22 @@ It was the best of times, it was the worst of times, it was the age of wisdom, i
 It was the epoch of belief, it was the epoch of incredulity, it was the season of light, it was the season of darkness.
 Happy families are all alike; every unhappy family is unhappy in its own way.
 There was no possibility of taking a walk that day.
-The fog comes on little cat feet, sitting over harbor and city on silent haunches.
-A screaming comes across the sky; it has happened before, but there is nothing to compare it to now.
+Alice was beginning to get very tired of sitting by her sister on the bank, and of having nothing to do.
+To Sherlock Holmes she is always the woman.
 ```
 
-Create `src/capture_template/data/corpus/speeches.txt` with public-domain speech excerpts. Use this exact content:
+Create `src/capture_template/data/corpus/speeches.txt` with public-domain founding-era American speeches (Lincoln, the Declaration, Patrick Henry). Use this exact content:
 ```
 Four score and seven years ago our fathers brought forth on this continent a new nation, conceived in liberty.
 We are met on a great battlefield of that war, and we have come to dedicate a portion of that field.
 The world will little note, nor long remember what we say here, but it can never forget what they did here.
 We hold these truths to be self evident, that all men are created equal.
-Ask not what your country can do for you; ask what you can do for your country.
-I have a dream that one day this nation will rise up and live out the true meaning of its creed.
-We shall fight on the beaches, we shall fight on the landing grounds, we shall never surrender.
+I know not what course others may take, but as for me, give me liberty or give me death.
+With malice toward none, with charity for all, let us strive to finish the work we are in.
 Government of the people, by the people, for the people, shall not perish from the earth.
-The only thing we have to fear is fear itself.
+The mystic chords of memory will yet swell the chorus of the Union, when touched by the better angels of our nature.
 Now we are engaged in a great struggle, testing whether that nation can long endure.
+The cause of freedom rests not with the few, but with the many who will not be silent.
 ```
 
 Add to `src/capture_template/corpus.py` (add `from importlib import resources` to the imports, then the function):
