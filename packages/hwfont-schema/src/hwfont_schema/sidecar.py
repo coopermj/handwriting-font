@@ -21,6 +21,7 @@ class Page(BaseModel):
     width_px: int = Field(gt=0)
     height_px: int = Field(gt=0)
     dpi: int = Field(gt=0)
+    source_bounds: BBox | None = None
     regions: list[Region] = Field(default_factory=list)
 
 

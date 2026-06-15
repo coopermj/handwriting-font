@@ -84,27 +84,34 @@ class GlyphStore:
         if updates:
             sample = sample.model_copy(update=updates)
 
-        # Insert the manifest row first; a failure here (e.g. duplicate id) must
-        # not leave orphaned sidecar files on disk.
-        self._conn.execute(
-            "INSERT INTO sample (id, label, kind, position_in_word, review_status, data) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                sample.id,
-                sample.label,
-                sample.kind.value,
-                sample.context.position_in_word.value,
-                sample.review_status.value,
-                sample.model_dump_json(),
-            ),
-        )
-
-        if strokes is not None:
-            (self.root / strokes_rel).write_text(strokes.model_dump_json(), encoding="utf-8")
-        if raster is not None:
-            (self.root / raster_rel).write_bytes(raster)
-
-        self._conn.commit()
+        written: list[Path] = []
+        try:
+            self._conn.execute(
+                "INSERT INTO sample (id, label, kind, position_in_word, review_status, data) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    sample.id,
+                    sample.label,
+                    sample.kind.value,
+                    sample.context.position_in_word.value,
+                    sample.review_status.value,
+                    sample.model_dump_json(),
+                ),
+            )
+            if strokes is not None:
+                path = self.root / strokes_rel
+                path.write_text(strokes.model_dump_json(), encoding="utf-8")
+                written.append(path)
+            if raster is not None:
+                path = self.root / raster_rel
+                path.write_bytes(raster)
+                written.append(path)
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            for path in written:
+                path.unlink(missing_ok=True)
+            raise
         return sample
 
     def samples_for(
@@ -135,8 +142,8 @@ class GlyphStore:
         result: list[CoverageRow] = []
         for label, kind, required in rows:
             (accepted,) = self._conn.execute(
-                "SELECT COUNT(*) FROM sample WHERE label = ? AND review_status = ?",
-                (label, ReviewStatus.accepted.value),
+                "SELECT COUNT(*) FROM sample WHERE label = ? AND kind = ? AND review_status = ?",
+                (label, kind, ReviewStatus.accepted.value),
             ).fetchone()
             result.append(
                 CoverageRow(

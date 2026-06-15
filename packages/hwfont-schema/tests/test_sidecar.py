@@ -39,3 +39,15 @@ def test_sidecar_defaults_version_and_round_trips():
     assert sidecar.version == "1"
     restored = CaptureSidecar.model_validate_json(sidecar.model_dump_json())
     assert restored == sidecar
+
+
+def test_page_source_bounds_round_trips():
+    page = Page(
+        id="p1",
+        width_px=1404,
+        height_px=1872,
+        dpi=226,
+        source_bounds=BBox(x=10, y=10, w=1000, h=1400),
+    )
+    assert Page.model_validate_json(page.model_dump_json()) == page
+    assert Page(id="p2", width_px=10, height_px=10, dpi=72).source_bounds is None

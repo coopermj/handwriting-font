@@ -17,7 +17,7 @@ class Metrics(BaseModel):
     """Em-normalized typographic metrics for one sample."""
 
     baseline: float
-    x_height: float
+    x_height: float = Field(gt=0)
     advance: float = Field(gt=0)
     bbox: BBox
 

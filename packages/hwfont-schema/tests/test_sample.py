@@ -48,3 +48,8 @@ def test_target_requires_positive_required_count():
 def test_enums_serialize_to_their_string_values():
     s = _sample(review_status=ReviewStatus.needs_review)
     assert '"review_status":"needs_review"' in s.model_dump_json()
+
+
+def test_metrics_rejects_nonpositive_x_height():
+    with pytest.raises(ValidationError):
+        Metrics(baseline=0.0, x_height=0.0, advance=0.6, bbox=BBox(x=0, y=0, w=1, h=1))

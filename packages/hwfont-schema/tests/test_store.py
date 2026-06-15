@@ -93,3 +93,28 @@ def test_coverage_counts_accepted_samples_against_targets(tmp_path: Path):
     assert coverage["eft"] == CoverageRow(
         label="eft", kind="ligature", required=3, accepted=0, met=False
     )
+
+
+import pytest
+
+
+def test_failed_insert_rolls_back_and_does_not_leak_into_later_commit(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    store.add_sample(_sample("s1", "a"))
+    with pytest.raises(Exception):
+        store.add_sample(_sample("s1", "a"))  # duplicate id -> IntegrityError
+    store.add_sample(_sample("s2", "a"))  # later successful insert + commit
+    got = store.samples_for("a")
+    store.close()
+    assert sorted(s.id for s in got) == ["s1", "s2"]  # no duplicate/orphan from the failed insert
+
+
+def test_coverage_does_not_cross_count_single_and_ligature_with_same_label(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    store.add_target(Target(label="x", kind=Kind.single, required_count=1))
+    store.add_target(Target(label="x", kind=Kind.ligature, required_count=1))
+    store.add_sample(_sample("s1", "x"))  # _sample uses Kind.single
+    coverage = {(r.label, r.kind): r for r in store.coverage()}
+    store.close()
+    assert coverage[("x", "single")].met is True
+    assert coverage[("x", "ligature")].met is False
