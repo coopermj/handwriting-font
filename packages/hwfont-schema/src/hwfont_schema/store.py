@@ -52,13 +52,15 @@ class GlyphStore:
         (root / "raster").mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(root / "store.db")
         conn.executescript(_SCHEMA)
-        conn.commit()
         return cls(root, conn)
 
     @classmethod
     def open(cls, root: str | Path) -> "GlyphStore":
         root = Path(root)
-        conn = sqlite3.connect(root / "store.db")
+        db_path = root / "store.db"
+        if not db_path.exists():
+            raise FileNotFoundError(f"No glyph store at {db_path}")
+        conn = sqlite3.connect(db_path)
         return cls(root, conn)
 
     def close(self) -> None:
@@ -70,15 +72,19 @@ class GlyphStore:
         strokes: StrokeData | None = None,
         raster: bytes | None = None,
     ) -> Sample:
-        if strokes is not None:
-            rel = f"strokes/{sample.id}.json"
-            (self.root / rel).write_text(strokes.model_dump_json(), encoding="utf-8")
-            sample = sample.model_copy(update={"strokes_path": rel})
-        if raster is not None:
-            rel = f"raster/{sample.id}.png"
-            (self.root / rel).write_bytes(raster)
-            sample = sample.model_copy(update={"raster_path": rel})
+        strokes_rel = f"strokes/{sample.id}.json" if strokes is not None else None
+        raster_rel = f"raster/{sample.id}.png" if raster is not None else None
 
+        updates = {}
+        if strokes_rel is not None:
+            updates["strokes_path"] = strokes_rel
+        if raster_rel is not None:
+            updates["raster_path"] = raster_rel
+        if updates:
+            sample = sample.model_copy(update=updates)
+
+        # Insert the manifest row first; a failure here (e.g. duplicate id) must
+        # not leave orphaned sidecar files on disk.
         self._conn.execute(
             "INSERT INTO sample (id, label, kind, position_in_word, review_status, data) "
             "VALUES (?, ?, ?, ?, ?, ?)",
@@ -91,6 +97,12 @@ class GlyphStore:
                 sample.model_dump_json(),
             ),
         )
+
+        if strokes is not None:
+            (self.root / strokes_rel).write_text(strokes.model_dump_json(), encoding="utf-8")
+        if raster is not None:
+            (self.root / raster_rel).write_bytes(raster)
+
         self._conn.commit()
         return sample
 

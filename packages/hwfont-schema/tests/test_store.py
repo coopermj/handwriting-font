@@ -56,3 +56,15 @@ def test_reopen_and_read_sample_back(tmp_path: Path):
     assert len(got) == 1
     assert got[0].id == "s1"
     assert got[0].label == "a"
+
+
+def test_strokes_path_survives_round_trip(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    store.add_sample(_sample("s1", "a"), strokes=_strokes(), raster=None)
+    store.close()
+
+    reopened = GlyphStore.open(tmp_path / "store")
+    got = reopened.samples_for("a")
+    reopened.close()
+
+    assert got[0].strokes_path == "strokes/s1.json"
