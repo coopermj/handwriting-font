@@ -1,0 +1,120 @@
+from pathlib import Path
+
+from hwfont_schema.enums import Kind, PositionInWord, Quality, ReviewStatus
+from hwfont_schema.geometry import BBox
+from hwfont_schema.sample import Context, Metrics, Sample, Target
+from hwfont_schema.store import CoverageRow, GlyphStore
+from hwfont_schema.strokes import Contour, StrokeData, StrokePoint
+
+
+def _sample(sample_id: str, label: str, position=PositionInWord.medial) -> Sample:
+    return Sample(
+        id=sample_id,
+        label=label,
+        kind=Kind.single,
+        context=Context(source_word="cat", position_in_word=position),
+        metrics=Metrics(baseline=0.0, x_height=0.5, advance=0.6, bbox=BBox(x=0, y=0, w=0.5, h=0.5)),
+        quality=Quality.good,
+        review_status=ReviewStatus.accepted,
+        capture_session_id="sess-1",
+        created_at="2026-06-15T00:00:00Z",
+    )
+
+
+def _strokes() -> StrokeData:
+    return StrokeData(contours=[Contour(points=[StrokePoint(x=0, y=0), StrokePoint(x=1, y=1)])])
+
+
+def test_create_initializes_directory_layout(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    assert (tmp_path / "store" / "store.db").exists()
+    assert (tmp_path / "store" / "strokes").is_dir()
+    assert (tmp_path / "store" / "raster").is_dir()
+    store.close()
+
+
+def test_add_sample_writes_stroke_sidecar_and_sets_relative_path(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    stored = store.add_sample(_sample("s1", "a"), strokes=_strokes(), raster=b"\x89PNG_fake")
+    store.close()
+
+    assert stored.strokes_path == "strokes/s1.json"
+    assert stored.raster_path == "raster/s1.png"
+    assert (tmp_path / "store" / "strokes" / "s1.json").exists()
+    assert (tmp_path / "store" / "raster" / "s1.png").read_bytes() == b"\x89PNG_fake"
+
+
+def test_reopen_and_read_sample_back(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    store.add_sample(_sample("s1", "a"), strokes=_strokes(), raster=None)
+    store.close()
+
+    reopened = GlyphStore.open(tmp_path / "store")
+    got = reopened.samples_for("a")
+    reopened.close()
+
+    assert len(got) == 1
+    assert got[0].id == "s1"
+    assert got[0].label == "a"
+
+
+def test_strokes_path_survives_round_trip(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    store.add_sample(_sample("s1", "a"), strokes=_strokes(), raster=None)
+    store.close()
+
+    reopened = GlyphStore.open(tmp_path / "store")
+    got = reopened.samples_for("a")
+    reopened.close()
+
+    assert got[0].strokes_path == "strokes/s1.json"
+
+
+def test_samples_for_filters_by_position(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    store.add_sample(_sample("s1", "a", PositionInWord.initial))
+    store.add_sample(_sample("s2", "a", PositionInWord.final))
+    only_final = store.samples_for("a", position=PositionInWord.final)
+    store.close()
+
+    assert [s.id for s in only_final] == ["s2"]
+
+
+def test_coverage_counts_accepted_samples_against_targets(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    store.add_target(Target(label="a", kind=Kind.single, required_count=2))
+    store.add_target(Target(label="eft", kind=Kind.ligature, required_count=3))
+    store.add_sample(_sample("s1", "a"))
+    store.add_sample(_sample("s2", "a"))
+    coverage = {row.label: row for row in store.coverage()}
+    store.close()
+
+    assert coverage["a"] == CoverageRow(label="a", kind="single", required=2, accepted=2, met=True)
+    assert coverage["eft"] == CoverageRow(
+        label="eft", kind="ligature", required=3, accepted=0, met=False
+    )
+
+
+import pytest
+
+
+def test_failed_insert_rolls_back_and_does_not_leak_into_later_commit(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    store.add_sample(_sample("s1", "a"))
+    with pytest.raises(Exception):
+        store.add_sample(_sample("s1", "a"))  # duplicate id -> IntegrityError
+    store.add_sample(_sample("s2", "a"))  # later successful insert + commit
+    got = store.samples_for("a")
+    store.close()
+    assert sorted(s.id for s in got) == ["s1", "s2"]  # no duplicate/orphan from the failed insert
+
+
+def test_coverage_does_not_cross_count_single_and_ligature_with_same_label(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    store.add_target(Target(label="x", kind=Kind.single, required_count=1))
+    store.add_target(Target(label="x", kind=Kind.ligature, required_count=1))
+    store.add_sample(_sample("s1", "x"))  # _sample uses Kind.single
+    coverage = {(r.label, r.kind): r for r in store.coverage()}
+    store.close()
+    assert coverage[("x", "single")].met is True
+    assert coverage[("x", "ligature")].met is False
