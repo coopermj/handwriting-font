@@ -98,11 +98,16 @@ def plan(
             achieved_natural[t.label] += occ
             deficit[t.label] = max(0, deficit[t.label] - occ)
 
-    # Drill-fill any target still short. Iterate targets in a stable order.
+    # Drill-fill any target still short, respecting line_cap as a hard bound.
+    # Iterate targets in a stable order.
     for t in targets:
+        if len(lines) >= line_cap:
+            break
         if deficit[t.label] <= 0:
             continue
         for drill_text in _drill_lines(t.label, deficit[t.label], drill_budget):
+            if len(lines) >= line_cap:
+                break
             lines.append(PromptLine(text=drill_text, is_drill=True))
             occ = count_occurrences(drill_text, t.label)
             achieved_drill[t.label] += occ

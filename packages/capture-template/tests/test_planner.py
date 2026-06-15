@@ -63,3 +63,11 @@ def test_plan_reports_unmet_target_when_drill_budget_too_small():
     cov = {r.label: r for r in result.coverage}
     assert cov["abcdefgh"].met is False
     assert cov["abcdefgh"].source == "none"
+
+
+def test_plan_respects_line_cap_across_drill_fill():
+    # many distinct targets, tiny line_cap, empty corpus -> drill phase must stop at the cap
+    targets = [Target(label=ch, kind=Kind.single, required_count=1) for ch in "abcde"]
+    result = plan(targets, [], line_cap=2)
+    assert len(result.lines) == 2
+    assert result.all_met is False  # cap reached before all targets drilled
