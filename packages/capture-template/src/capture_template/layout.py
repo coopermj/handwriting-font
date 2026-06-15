@@ -57,6 +57,12 @@ def _validate(config: PageConfig) -> None:
             f"page too short: usable height {config.height_px - 2 * config.margin_px}px "
             f"< row_pitch_px {config.row_pitch_px}px"
         )
+    usable_width = config.width_px - 2 * config.margin_px
+    if usable_width <= 0:
+        raise ValueError(
+            f"margins ({config.margin_px}px each side) leave no usable width "
+            f"on a {config.width_px}px page"
+        )
 
 
 def _make_row(text: str, targets: list[Target], config: PageConfig, row_top: int) -> Row:

@@ -59,3 +59,20 @@ def test_build_layout_rejects_row_that_does_not_fit_pitch():
     bad = _config(row_pitch_px=80)
     with pytest.raises(ValueError):
         build_layout([PromptLine(text="cat", is_drill=False)], _targets(), bad)
+
+
+def test_build_layout_rejects_margins_wider_than_page():
+    bad = _config(width_px=80, margin_px=50)  # 2*50 >= 80 -> no usable width
+    with pytest.raises(ValueError):
+        build_layout([PromptLine(text="cat", is_drill=False)], _targets(), bad)
+
+
+def test_build_layout_empty_lines_yields_no_pages():
+    model = build_layout([], _targets(), _config())
+    assert model.pages == []
+
+
+def test_build_layout_exactly_one_full_page():
+    lines = [PromptLine(text="cat", is_drill=False) for _ in range(10)]  # per_page == 10
+    model = build_layout(lines, _targets(), _config())
+    assert [len(p.rows) for p in model.pages] == [10]
