@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from hwfont_schema.enums import PositionInWord
+from hwfont_schema.enums import PositionInWord, ReviewStatus
 from hwfont_schema.sample import Sample, Target
 from hwfont_schema.strokes import StrokeData
 
@@ -135,8 +135,8 @@ class GlyphStore:
         result: list[CoverageRow] = []
         for label, kind, required in rows:
             (accepted,) = self._conn.execute(
-                "SELECT COUNT(*) FROM sample WHERE label = ? AND review_status = 'accepted'",
-                (label,),
+                "SELECT COUNT(*) FROM sample WHERE label = ? AND review_status = ?",
+                (label, ReviewStatus.accepted.value),
             ).fetchone()
             result.append(
                 CoverageRow(
