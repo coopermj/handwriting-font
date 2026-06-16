@@ -22,7 +22,7 @@ def _config() -> PageConfig:
 
 
 def test_top_level_exports_present():
-    for name in ["generate", "PageConfig", "default_targets", "plan", "build_layout", "__version__"]:
+    for name in ["generate", "PageConfig", "default_targets", "plan", "build_layout", "__version__", "DEFAULT_PAGES"]:
         assert hasattr(ct, name), f"missing export: {name}"
 
 

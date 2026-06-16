@@ -87,7 +87,7 @@ def generate(
         drills = len(result.lines) - genuine
         print(
             f"Generated {len(result.lines)} prompt lines "
-            f"({genuine} genuine, {drills} drill) across {len(model.pages)} page(s)."
+            f"({genuine} genuine, {drills} drills) across {len(model.pages)} page(s)."
         )
         print(f"Coverage: {sum(r.met for r in result.coverage)}/{len(result.coverage)} targets met.")
         if unmet:
