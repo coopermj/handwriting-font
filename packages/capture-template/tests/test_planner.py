@@ -71,3 +71,67 @@ def test_plan_respects_line_cap_across_drill_fill():
     result = plan(targets, [], line_cap=2)
     assert len(result.lines) == 2
     assert result.all_met is False  # cap reached before all targets drilled
+
+
+def test_plan_without_target_lines_is_unchanged():
+    targets = [Target(label="a", kind=Kind.single, required_count=1)]
+    result = plan(targets, ["cat", "bat", "rat"])  # coverage met by one line; no fill
+    assert len(result.lines) == 1
+    assert all(not line.is_drill for line in result.lines)
+
+
+def test_plan_variety_fill_reaches_target_lines_with_genuine_only():
+    targets = [Target(label="a", kind=Kind.single, required_count=1)]
+    candidates = ["cat", "bat", "rat", "mat", "hat", "sat", "fat", "pat"]
+    result = plan(targets, candidates, target_lines=5)
+    assert len(result.lines) == 5
+    assert all(not line.is_drill for line in result.lines)
+
+
+def test_plan_variety_fill_stops_at_pool_exhaustion_without_padding():
+    targets = [Target(label="a", kind=Kind.single, required_count=1)]
+    result = plan(targets, ["cat", "bat"], target_lines=10)
+    assert len(result.lines) == 2  # only two genuine available; not padded to 10
+    assert all(not line.is_drill for line in result.lines)
+
+
+def test_plan_variety_fill_prefers_more_novel_sentences():
+    targets = [Target(label="x", kind=Kind.single, required_count=1)]
+    # coverage met by "xx"; fill then prefers the sentence adding the most new bigrams
+    result = plan(targets, ["xx", "abcd", "ab"], target_lines=2)
+    assert result.lines[0].text == "xx"
+    assert result.lines[1].text == "abcd"  # 3 new bigrams (ab,bc,cd) beats "ab" (1)
+
+
+def test_plan_coverage_wins_over_small_target_lines():
+    # base coverage needs more lines than target_lines=1 can hold; coverage still met
+    targets = [
+        Target(label="a", kind=Kind.single, required_count=1),
+        Target(label="z", kind=Kind.single, required_count=1),
+    ]
+    result = plan(targets, ["aaa", "zzz"], target_lines=1)
+    assert result.all_met is True
+    assert len(result.lines) >= 2  # one line per letter, target_lines floor doesn't cap coverage
+
+
+def test_plan_target_lines_can_exceed_line_cap():
+    # target_lines above line_cap raises the effective cap, so genuine variety-fill
+    # grows the booklet past line_cap.
+    targets = [Target(label="a", kind=Kind.single, required_count=1)]
+    candidates = [f"a sample sentence number {n} here" for n in range(60)]
+    result = plan(targets, candidates, line_cap=10, target_lines=25)
+    assert len(result.lines) == 25
+    assert all(not line.is_drill for line in result.lines)
+
+
+def test_plan_reserves_drill_room_when_target_exceeds_line_cap():
+    # Large genuine pool + target_lines above line_cap must NOT starve the coverage
+    # drills a rare target needs. (Corpus has no 'q', so 'q' requires a drill.)
+    targets = [
+        Target(label="a", kind=Kind.single, required_count=1),
+        Target(label="q", kind=Kind.single, required_count=3),
+    ]
+    candidates = [f"a sample sentence number {n}" for n in range(50)]
+    result = plan(targets, candidates, line_cap=10, target_lines=30)
+    assert result.all_met is True  # coverage drills for 'q' were reserved, not crowded out
+    assert any(line.is_drill for line in result.lines)

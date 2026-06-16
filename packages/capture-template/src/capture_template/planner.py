@@ -66,20 +66,33 @@ def _drill_lines(label: str, needed: int, drill_budget: int) -> list[str]:
     return lines
 
 
+def _bigrams(text: str) -> set[tuple[str, str]]:
+    """Adjacent non-space character pairs — a proxy for glyph-in-context coverage."""
+    return {(a, b) for a, b in zip(text, text[1:]) if a != " " and b != " "}
+
+
+def _words(text: str) -> set[str]:
+    return set(text.split())
+
+
 def plan(
     targets: list[Target],
     candidates: list[str],
     line_cap: int = 200,
     drill_budget: int = 60,
+    target_lines: int | None = None,
 ) -> PlanResult:
     deficit = {t.label: t.required_count for t in targets}
     achieved_natural = {t.label: 0 for t in targets}
     achieved_drill = {t.label: 0 for t in targets}
 
+    effective_cap = max(line_cap, target_lines) if target_lines is not None else line_cap
+
     pool = list(enumerate(candidates))
     lines: list[PromptLine] = []
 
-    while len(lines) < line_cap and any(d > 0 for d in deficit.values()):
+    # Phase 1 — coverage: meet base counts with genuine sentences.
+    while len(lines) < effective_cap and any(d > 0 for d in deficit.values()):
         best = None
         for idx, text in pool:
             score = _score(text, targets, deficit)
@@ -98,15 +111,52 @@ def plan(
             achieved_natural[t.label] += occ
             deficit[t.label] = max(0, deficit[t.label] - occ)
 
-    # Drill-fill any target still short, respecting line_cap as a hard bound.
-    # Iterate targets in a stable order.
+    # Phase 2 — variety-fill: add genuine sentences (never drills) up to target_lines,
+    # choosing the most context-novel candidate each step (new bigrams, then new words).
+    if target_lines is not None:
+        # Reserve room so phase-3 coverage drills aren't crowded out by variety-fill
+        # when target_lines pushes effective_cap above what's left for mandatory drills.
+        drill_reserve = sum(
+            len(_drill_lines(t.label, deficit[t.label], drill_budget))
+            for t in targets
+            if deficit[t.label] > 0
+        )
+        fill_limit = max(len(lines), min(target_lines, effective_cap - drill_reserve))
+        seen_bigrams: set[tuple[str, str]] = set()
+        seen_words: set[str] = set()
+        for line in lines:
+            seen_bigrams |= _bigrams(line.text)
+            seen_words |= _words(line.text)
+        while len(lines) < fill_limit and pool:
+            best = None
+            for idx, text in pool:
+                key = (
+                    -len(_bigrams(text) - seen_bigrams),
+                    -len(_words(text) - seen_words),
+                    len(text),
+                    text,
+                    idx,
+                )
+                if best is None or key < best[0]:
+                    best = (key, idx, text)
+            _, idx, text = best
+            pool = [(i, t) for (i, t) in pool if i != idx]
+            lines.append(PromptLine(text=text, is_drill=False))
+            seen_bigrams |= _bigrams(text)
+            seen_words |= _words(text)
+            for t in targets:
+                occ = count_occurrences(text, t.label)
+                achieved_natural[t.label] += occ
+                deficit[t.label] = max(0, deficit[t.label] - occ)
+
+    # Phase 3 — drill-fill remaining base-coverage gaps, respecting effective_cap.
     for t in targets:
-        if len(lines) >= line_cap:
+        if len(lines) >= effective_cap:
             break
         if deficit[t.label] <= 0:
             continue
         for drill_text in _drill_lines(t.label, deficit[t.label], drill_budget):
-            if len(lines) >= line_cap:
+            if len(lines) >= effective_cap:
                 break
             lines.append(PromptLine(text=drill_text, is_drill=True))
             occ = count_occurrences(drill_text, t.label)

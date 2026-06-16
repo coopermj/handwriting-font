@@ -8,11 +8,14 @@ from pathlib import Path
 from hwfont_schema import Kind
 
 from capture_template.corpus import default_corpus_paths, load_corpus
-from capture_template.layout import LayoutModel, PageConfig, build_layout
+from capture_template.layout import LayoutModel, PageConfig, build_layout, rows_per_page
 from capture_template.pdf import render_pdf
 from capture_template.planner import PlanResult, plan
 from capture_template.sidecar_out import build_sidecar
 from capture_template.targets import default_targets, load_target_spec
+
+
+DEFAULT_PAGES = 12
 
 
 class UnmetCoverageError(RuntimeError):
@@ -39,7 +42,10 @@ def generate(
     config: PageConfig | None = None,
     force: bool = False,
     allow_unmet: bool = False,
+    pages: int = DEFAULT_PAGES,
 ) -> PlanResult:
+    if pages < 1:
+        raise ValueError(f"pages must be >= 1, got {pages}")
     out_dir = Path(out_dir)
     if out_dir.exists() and not force:
         raise FileExistsError(f"output dir already exists: {out_dir} (use force=True to overwrite)")
@@ -57,7 +63,8 @@ def generate(
         )
         candidates = load_corpus(list(sources), charset)
 
-        result = plan(targets, candidates)
+        target_lines = pages * rows_per_page(config)
+        result = plan(targets, candidates, target_lines=target_lines)
 
         if not result.all_met and not allow_unmet:
             unmet = [r.label for r in result.coverage if not r.met]
@@ -76,7 +83,12 @@ def generate(
         )
 
         unmet = [r.label for r in result.coverage if not r.met]
-        print(f"Generated {len(result.lines)} prompt lines across {len(model.pages)} page(s).")
+        genuine = sum(1 for line in result.lines if not line.is_drill)
+        drills = len(result.lines) - genuine
+        print(
+            f"Generated {len(result.lines)} prompt lines "
+            f"({genuine} genuine, {drills} drills) across {len(model.pages)} page(s)."
+        )
         print(f"Coverage: {sum(r.met for r in result.coverage)}/{len(result.coverage)} targets met.")
         if unmet:
             print(f"UNMET targets ({len(unmet)}): {', '.join(unmet)}")
@@ -87,6 +99,13 @@ def generate(
         raise
 
 
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be >= 1")
+    return parsed
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Generate a handwriting-capture PDF + sidecar.")
     parser.add_argument("--target-spec", default=None, help="YAML/JSON target spec (default: built-in)")
@@ -94,6 +113,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", required=True, help="output directory")
     parser.add_argument("--force", action="store_true", help="overwrite an existing output dir")
     parser.add_argument("--allow-unmet", action="store_true", help="write the booklet even if some targets are unmet")
+    parser.add_argument(
+        "--pages", type=_positive_int, default=DEFAULT_PAGES,
+        help=f"target booklet length in pages (default: {DEFAULT_PAGES})",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -103,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
             out_dir=args.out,
             force=args.force,
             allow_unmet=args.allow_unmet,
+            pages=args.pages,
         )
     except UnmetCoverageError as e:
         print(e)
