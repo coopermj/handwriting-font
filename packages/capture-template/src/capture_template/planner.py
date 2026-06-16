@@ -114,12 +114,20 @@ def plan(
     # Phase 2 — variety-fill: add genuine sentences (never drills) up to target_lines,
     # choosing the most context-novel candidate each step (new bigrams, then new words).
     if target_lines is not None:
+        # Reserve room so phase-3 coverage drills aren't crowded out by variety-fill
+        # when target_lines pushes effective_cap above what's left for mandatory drills.
+        drill_reserve = sum(
+            len(_drill_lines(t.label, deficit[t.label], drill_budget))
+            for t in targets
+            if deficit[t.label] > 0
+        )
+        fill_limit = max(len(lines), min(target_lines, effective_cap - drill_reserve))
         seen_bigrams: set[tuple[str, str]] = set()
         seen_words: set[str] = set()
         for line in lines:
             seen_bigrams |= _bigrams(line.text)
             seen_words |= _words(line.text)
-        while len(lines) < target_lines and pool:
+        while len(lines) < fill_limit and pool:
             best = None
             for idx, text in pool:
                 key = (

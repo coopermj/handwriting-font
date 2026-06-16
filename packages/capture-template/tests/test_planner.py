@@ -122,3 +122,16 @@ def test_plan_target_lines_can_exceed_line_cap():
     result = plan(targets, candidates, line_cap=10, target_lines=25)
     assert len(result.lines) == 25
     assert all(not line.is_drill for line in result.lines)
+
+
+def test_plan_reserves_drill_room_when_target_exceeds_line_cap():
+    # Large genuine pool + target_lines above line_cap must NOT starve the coverage
+    # drills a rare target needs. (Corpus has no 'q', so 'q' requires a drill.)
+    targets = [
+        Target(label="a", kind=Kind.single, required_count=1),
+        Target(label="q", kind=Kind.single, required_count=3),
+    ]
+    candidates = [f"a sample sentence number {n}" for n in range(50)]
+    result = plan(targets, candidates, line_cap=10, target_lines=30)
+    assert result.all_met is True  # coverage drills for 'q' were reserved, not crowded out
+    assert any(line.is_drill for line in result.lines)
