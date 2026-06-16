@@ -112,3 +112,13 @@ def test_plan_coverage_wins_over_small_target_lines():
     result = plan(targets, ["aaa", "zzz"], target_lines=1)
     assert result.all_met is True
     assert len(result.lines) >= 2  # one line per letter, target_lines floor doesn't cap coverage
+
+
+def test_plan_target_lines_can_exceed_line_cap():
+    # target_lines above line_cap raises the effective cap, so genuine variety-fill
+    # grows the booklet past line_cap.
+    targets = [Target(label="a", kind=Kind.single, required_count=1)]
+    candidates = [f"a sample sentence number {n} here" for n in range(60)]
+    result = plan(targets, candidates, line_cap=10, target_lines=25)
+    assert len(result.lines) == 25
+    assert all(not line.is_drill for line in result.lines)
