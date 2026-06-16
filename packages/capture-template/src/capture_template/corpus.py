@@ -78,4 +78,4 @@ def load_corpus(
 
 def default_corpus_paths() -> list[Path]:
     base = resources.files("capture_template") / "data" / "corpus"
-    return [Path(str(base / "literature.txt")), Path(str(base / "speeches.txt"))]
+    return sorted(Path(str(base)).glob("*.txt"))

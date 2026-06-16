@@ -90,3 +90,13 @@ def test_load_corpus_keeps_sentences_after_normalization(tmp_path):
     )
     got = load_corpus([tmp_path / "a.txt"], charset, min_chars=8, max_chars=90)
     assert got == ['"the cat-a fine cat\'s tale" sat here.']
+
+
+def test_default_corpus_paths_globs_sorted_txt():
+    from capture_template.corpus import default_corpus_paths
+
+    paths = default_corpus_paths()
+    assert len(paths) >= 2
+    assert all(p.suffix == ".txt" for p in paths)
+    assert all(p.exists() for p in paths)
+    assert paths == sorted(paths)
