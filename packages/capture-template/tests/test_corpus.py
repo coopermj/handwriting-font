@@ -71,3 +71,22 @@ def test_default_corpus_has_healthy_usable_pool_at_default_budget():
     result = plan(targets, candidates)
     natural = [line for line in result.lines if not line.is_drill]
     assert len(natural) >= 10
+
+
+def test_normalize_typography_maps_to_ascii():
+    from capture_template.corpus import normalize_typography
+
+    assert (
+        normalize_typography("“Hi—there’s…”")
+        == "\"Hi-there's.\""
+    )
+
+
+def test_load_corpus_keeps_sentences_after_normalization(tmp_path):
+    # curly quotes + em dash would fail an ASCII charset without normalization
+    charset = set("abcdefghijklmnopqrstuvwxyz .,'\"-")
+    (tmp_path / "a.txt").write_text(
+        "“the cat—a fine cat’s tale” sat here.\n", encoding="utf-8"
+    )
+    got = load_corpus([tmp_path / "a.txt"], charset, min_chars=8, max_chars=90)
+    assert got == ['"the cat-a fine cat\'s tale" sat here.']

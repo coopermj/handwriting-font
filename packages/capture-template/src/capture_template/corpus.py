@@ -10,6 +10,24 @@ logger = logging.getLogger(__name__)
 _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 _WHITESPACE = re.compile(r"\s+")
 
+_NORMALIZE = str.maketrans(
+    {
+        "‘": "'",
+        "’": "'",
+        "“": '"',
+        "”": '"',
+        "–": "-",
+        "—": "-",
+        "…": ".",
+        " ": " ",
+    }
+)
+
+
+def normalize_typography(text: str) -> str:
+    """Map common typographic characters (curly quotes, dashes, ellipsis, nbsp) to ASCII."""
+    return text.translate(_NORMALIZE)
+
 
 def split_sentences(text: str) -> list[str]:
     sentences: list[str] = []
@@ -36,7 +54,7 @@ def load_corpus(
     dropped_charset = 0
     dropped_dup = 0
     for path in paths:
-        text = Path(path).read_text(encoding="utf-8")
+        text = normalize_typography(Path(path).read_text(encoding="utf-8"))
         for sentence in split_sentences(text):
             if not (min_chars <= len(sentence) <= max_chars):
                 dropped_length += 1
