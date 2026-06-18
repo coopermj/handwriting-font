@@ -246,3 +246,41 @@ def test_default_corpus_yields_multipage_mostly_genuine_booklet(tmp_path):
         (tmp_path / "out" / "capture.sidecar.json").read_text(encoding="utf-8")
     )
     assert len(sidecar.pages) >= 3  # genuinely multi-page
+
+
+def test_generate_wraps_long_quotation_into_multiple_regions(tmp_path):
+    from hwfont_schema import CaptureSidecar
+
+    spec = {
+        "glyphs": {"count": 1, "include": "abcdefghijklmnopqrstuvwxyz."},
+        "ligatures": {"count": 1, "items": []},
+    }
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text(json.dumps(spec), encoding="utf-8")
+    corpus_dir = tmp_path / "corpus"
+    corpus_dir.mkdir()
+    # one long quotation (~150 chars) that must wrap across several lines
+    long_quote = (
+        "the quick brown fox jumps over the lazy dog while the calm grey cat "
+        "watched from the warm window sill and the bright moon rose slowly."
+    )
+    (corpus_dir / "c.txt").write_text(long_quote + "\n", encoding="utf-8")
+
+    cfg = PageConfig(
+        width_px=1000, height_px=1400, dpi=226, margin_px=50,
+        prompt_font_px=24, prompt_gap_px=10, line_height_px=60, row_pitch_px=130,
+        max_line_chars=40,
+    )
+    result = generate(
+        target_spec_path=spec_path, corpus_dir=corpus_dir, out_dir=tmp_path / "out",
+        config=cfg, pages=4,
+    )
+    # one genuine entry, but it renders as multiple sidecar regions (wrapped rows)
+    genuine = [line for line in result.lines if not line.is_drill]
+    assert len(genuine) == 1
+    sidecar = CaptureSidecar.model_validate_json(
+        (tmp_path / "out" / "capture.sidecar.json").read_text(encoding="utf-8")
+    )
+    total_regions = sum(len(p.regions) for p in sidecar.pages)
+    # the long quote alone is ~130 chars at a 40-char budget -> >= 3 wrapped regions
+    assert total_regions >= 3
