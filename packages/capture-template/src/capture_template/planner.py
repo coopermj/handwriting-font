@@ -100,7 +100,8 @@ def plan(
     lines: list[PromptLine] = []
     rendered = 0
 
-    # Phase 1 — coverage: meet base counts with genuine sentences.
+    # Phase 1 — coverage: meet base counts with genuine sentences. A selected entry
+    # may push `rendered` past effective_cap by its own row-cost; coverage is mandatory.
     while rendered < effective_cap and any(d > 0 for d in deficit.values()):
         best = None
         for idx, text in pool:
@@ -127,9 +128,10 @@ def plan(
         # Reserve room so phase-3 coverage drills aren't crowded out by variety-fill
         # when target_lines pushes effective_cap above what's left for mandatory drills.
         drill_reserve = sum(
-            len(_drill_lines(t.label, deficit[t.label], drill_budget))
+            cost(dl)
             for t in targets
             if deficit[t.label] > 0
+            for dl in _drill_lines(t.label, deficit[t.label], drill_budget)
         )
         fill_limit = max(rendered, min(target_lines, effective_cap - drill_reserve))
         seen_bigrams: set[tuple[str, str]] = set()
@@ -170,7 +172,7 @@ def plan(
             if rendered >= effective_cap:
                 break
             lines.append(PromptLine(text=drill_text, is_drill=True))
-            rendered += 1
+            rendered += cost(drill_text)
             occ = count_occurrences(drill_text, t.label)
             achieved_drill[t.label] += occ
             deficit[t.label] = max(0, deficit[t.label] - occ)
