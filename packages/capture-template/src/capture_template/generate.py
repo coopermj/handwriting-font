@@ -16,6 +16,7 @@ from capture_template.targets import default_targets, load_target_spec
 
 
 DEFAULT_PAGES = 12
+MAX_QUOTE_CHARS = 240
 
 
 class UnmetCoverageError(RuntimeError):
@@ -32,6 +33,7 @@ def _default_config() -> PageConfig:
         prompt_gap_px=12,
         line_height_px=70,
         row_pitch_px=150,
+        max_line_chars=80,  # ~ (1404 - 160) / (28 * 0.55)
     )
 
 
@@ -61,10 +63,10 @@ def generate(
         sources = (
             sorted(Path(corpus_dir).glob("*.txt")) if corpus_dir is not None else default_corpus_paths()
         )
-        candidates = load_corpus(list(sources), charset)
+        candidates = load_corpus(list(sources), charset, max_chars=MAX_QUOTE_CHARS)
 
         target_lines = pages * rows_per_page(config)
-        result = plan(targets, candidates, target_lines=target_lines)
+        result = plan(targets, candidates, target_lines=target_lines, max_line_chars=config.max_line_chars)
 
         if not result.all_met and not allow_unmet:
             unmet = [r.label for r in result.coverage if not r.met]

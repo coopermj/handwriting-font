@@ -100,3 +100,23 @@ def test_default_corpus_paths_globs_sorted_txt():
     assert all(p.suffix == ".txt" for p in paths)
     assert all(p.exists() for p in paths)
     assert paths == sorted(paths)
+
+
+def test_bundled_corpus_supplies_rare_clusters_at_required_counts():
+    from capture_template.corpus import default_corpus_paths, load_corpus
+    from capture_template.planner import count_occurrences
+    from capture_template.targets import default_targets
+    from hwfont_schema import Kind
+
+    targets = {t.label: t for t in default_targets()}
+    charset = {t.label for t in targets.values() if t.kind == Kind.single}
+    pool = load_corpus(default_corpus_paths(), charset, max_chars=240)
+    blob = " ".join(pool)
+
+    rare = [
+        "ct", "sp", "ph", "oft", "tch", "dge", "igh", "ght", "thr", "str", "nth",
+        "Ch", "Ph", "Sp", "Qu", "Thr", "Str", "Sch", "Shr",
+    ]
+    for label in rare:
+        got = count_occurrences(blob, label)
+        assert got >= targets[label].required_count, f"{label}: {got} < {targets[label].required_count}"

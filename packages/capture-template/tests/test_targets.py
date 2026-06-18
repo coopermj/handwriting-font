@@ -50,3 +50,23 @@ def test_load_target_spec_rejects_one_char_ligature(tmp_path):
     path.write_text(json.dumps(spec), encoding="utf-8")
     with pytest.raises(ValueError):
         load_target_spec(path)
+
+
+def test_default_targets_include_cluster_set_with_tiered_counts():
+    by_label = {t.label: t for t in default_targets()}
+    # common cluster (count 8)
+    assert by_label["th"].kind == Kind.ligature
+    assert by_label["th"].required_count == 8
+    # rare lowercase (count 4)
+    assert by_label["tch"].required_count == 4
+    assert by_label["oft"].required_count == 4
+    # common capital digraph (count 6)
+    assert by_label["Th"].required_count == 6
+    # rare capital (count 3)
+    assert by_label["Sch"].required_count == 3
+    # capital and lowercase are distinct targets
+    assert by_label["Th"].kind == Kind.ligature and by_label["th"].kind == Kind.ligature
+    assert "Sh" in by_label and "sh" in by_label
+    # all labels unique
+    labels = [t.label for t in default_targets()]
+    assert len(labels) == len(set(labels))

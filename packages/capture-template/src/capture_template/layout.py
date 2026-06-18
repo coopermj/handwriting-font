@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from hwfont_schema import BBox, Kind, Target
 
 from capture_template.planner import PromptLine
+from capture_template.text_wrap import wrap_text
 
 
 @dataclass
@@ -17,6 +18,7 @@ class PageConfig:
     prompt_gap_px: int
     line_height_px: int
     row_pitch_px: int
+    max_line_chars: int = 88
 
 
 @dataclass
@@ -63,6 +65,8 @@ def _validate(config: PageConfig) -> None:
             f"margins ({config.margin_px}px each side) leave no usable width "
             f"on a {config.width_px}px page"
         )
+    if config.max_line_chars < 1:
+        raise ValueError(f"max_line_chars must be >= 1, got {config.max_line_chars}")
 
 
 def _make_row(text: str, targets: list[Target], config: PageConfig, row_top: int) -> Row:
@@ -90,11 +94,14 @@ def build_layout(
     _validate(config)
     per_page = rows_per_page(config)
     model = LayoutModel(config=config)
-    for line_index, line in enumerate(lines):
-        page_index = line_index // per_page
-        row_in_page = line_index % per_page
-        if row_in_page == 0:
-            model.pages.append(LayoutPage(index=page_index))
-        row_top = config.margin_px + row_in_page * config.row_pitch_px
-        model.pages[page_index].rows.append(_make_row(line.text, targets, config, row_top))
+    row_index = 0
+    for line in lines:
+        for segment in wrap_text(line.text, config.max_line_chars):
+            page_index = row_index // per_page
+            row_in_page = row_index % per_page
+            if row_in_page == 0:
+                model.pages.append(LayoutPage(index=page_index))
+            row_top = config.margin_px + row_in_page * config.row_pitch_px
+            model.pages[page_index].rows.append(_make_row(segment, targets, config, row_top))
+            row_index += 1
     return model

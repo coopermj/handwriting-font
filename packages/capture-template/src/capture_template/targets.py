@@ -11,7 +11,25 @@ from hwfont_schema import Kind, Target
 DEFAULT_GLYPH_COUNT = 12
 DEFAULT_LIGATURE_COUNT = 8
 DEFAULT_GLYPHS = string.ascii_letters + string.digits + ".,!?'\"-;:()"
-DEFAULT_LIGATURES = ["fi", "fl", "ff", "ffi", "ffl", "eft", "fore", "ough", "tion", "ing"]
+DEFAULT_LIGATURES = [
+    # existing
+    "fi", "fl", "ff", "ffi", "ffl", "eft", "fore", "ough", "tion", "ing",
+    # common ligatures + digraphs (count 8)
+    "st", "ll", "ss", "ee", "oo", "th", "ch", "sh", "wh", "ck", "ng", "qu", "gh", "ea", "ou",
+    # rare lowercase clusters (count 4)
+    "ct", "sp", "ph", "oft", "tch", "dge", "igh", "ght", "thr", "str", "nth",
+    # common capital digraphs (count 6)
+    "Th", "Sh", "Wh", "St",
+    # rare capital clusters (count 3)
+    "Ch", "Ph", "Sp", "Qu", "Thr", "Str", "Sch", "Shr",
+]
+
+# Per-label required counts for clusters that differ from DEFAULT_LIGATURE_COUNT (8).
+DEFAULT_CLUSTER_COUNTS: dict[str, int] = {
+    **{lab: 4 for lab in ["ct", "sp", "ph", "oft", "tch", "dge", "igh", "ght", "thr", "str", "nth"]},
+    **{lab: 6 for lab in ["Th", "Sh", "Wh", "St"]},
+    **{lab: 3 for lab in ["Ch", "Ph", "Sp", "Qu", "Thr", "Str", "Sch", "Shr"]},
+}
 
 
 def _build(
@@ -49,7 +67,11 @@ def _build(
 
 def default_targets() -> list[Target]:
     return _build(
-        DEFAULT_GLYPHS, DEFAULT_GLYPH_COUNT, DEFAULT_LIGATURES, DEFAULT_LIGATURE_COUNT, {}
+        DEFAULT_GLYPHS,
+        DEFAULT_GLYPH_COUNT,
+        DEFAULT_LIGATURES,
+        DEFAULT_LIGATURE_COUNT,
+        DEFAULT_CLUSTER_COUNTS,
     )
 
 

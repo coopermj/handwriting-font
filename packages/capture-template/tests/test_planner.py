@@ -135,3 +135,24 @@ def test_plan_reserves_drill_room_when_target_exceeds_line_cap():
     result = plan(targets, candidates, line_cap=10, target_lines=30)
     assert result.all_met is True  # coverage drills for 'q' were reserved, not crowded out
     assert any(line.is_drill for line in result.lines)
+
+
+from capture_template.text_wrap import wrap_text
+
+
+def test_plan_target_lines_counts_rendered_rows_not_entries():
+    targets = [Target(label="a", kind=Kind.single, required_count=1)]
+    # each candidate wraps to 2 rows at max_line_chars=2 ("aa bb" -> ["aa","bb"])
+    candidates = ["aa bb", "aa cc", "aa dd", "aa ee"]
+    result = plan(targets, candidates, target_lines=4, max_line_chars=2)
+    rendered = sum(len(wrap_text(line.text, 2)) for line in result.lines)
+    assert rendered == 4            # rendered rows respect target_lines
+    assert len(result.lines) == 2   # two entries, each costing 2 rows
+    assert all(not line.is_drill for line in result.lines)
+
+
+def test_plan_max_line_chars_none_is_one_row_per_entry():
+    targets = [Target(label="a", kind=Kind.single, required_count=1)]
+    # without max_line_chars, behavior is unchanged (each entry costs one row)
+    result = plan(targets, ["aa bb cc dd ee ff"], target_lines=1)
+    assert len(result.lines) == 1
