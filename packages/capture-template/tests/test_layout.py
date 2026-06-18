@@ -15,6 +15,7 @@ def _config(**kw) -> PageConfig:
         prompt_gap_px=10,
         line_height_px=60,
         row_pitch_px=130,
+        max_line_chars=88,
     )
     base.update(kw)
     return PageConfig(**base)
@@ -76,3 +77,27 @@ def test_build_layout_exactly_one_full_page():
     lines = [PromptLine(text="cat", is_drill=False) for _ in range(10)]  # per_page == 10
     model = build_layout(lines, _targets(), _config())
     assert [len(p.rows) for p in model.pages] == [10]
+
+
+def test_long_entry_wraps_into_consecutive_rows():
+    cfg = _config(max_line_chars=12)  # _config passes kwargs to PageConfig
+    # one entry that wraps to 3 segments at budget 12
+    model = build_layout([PromptLine(text="the quick brown fox jumps over", is_drill=False)], _targets(), cfg)
+    rows = [r for p in model.pages for r in p.rows]
+    assert [r.prompt_text for r in rows] == ["the quick", "brown fox", "jumps over"]
+    # each wrapped row is a normal row: its own transcript + units + bbox
+    assert rows[0].expected_transcript == "the quick"
+    assert rows[0].expected_units == ["t", "h", "e", "q", "u", "i", "c", "k"]
+
+
+def test_wrapped_rows_paginate_across_pages():
+    cfg = _config(max_line_chars=12)  # rows_per_page == 10 for _config
+    # 4 entries each wrapping to 3 rows => 12 rows => 2 pages (10 + 2)
+    entries = [PromptLine(text="the quick brown fox jumps over", is_drill=False) for _ in range(4)]
+    model = build_layout(entries, _targets(), cfg)
+    assert [len(p.rows) for p in model.pages] == [10, 2]
+
+
+def test_layout_rejects_nonpositive_max_line_chars():
+    with pytest.raises(ValueError):
+        build_layout([PromptLine(text="cat", is_drill=False)], _targets(), _config(max_line_chars=0))
