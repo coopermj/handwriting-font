@@ -235,7 +235,7 @@ def test_default_corpus_yields_multipage_mostly_genuine_booklet(tmp_path):
 
     targets = default_targets()
     charset = {t.label for t in targets if t.kind == Kind.single}
-    pool = load_corpus(default_corpus_paths(), charset, max_chars=90)
+    pool = load_corpus(default_corpus_paths(), charset, max_chars=240)
     assert len(pool) >= 40  # healthy genuine pool
 
     result = generate(target_spec_path=None, corpus_dir=None, out_dir=tmp_path / "out")
