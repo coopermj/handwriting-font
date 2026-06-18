@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 
 from hwfont_schema import Kind, Target
 
+from capture_template.text_wrap import wrap_text
+
 
 def count_occurrences(text: str, label: str) -> int:
     """Non-overlapping, left-to-right occurrences of `label` in `text`."""
@@ -81,7 +83,13 @@ def plan(
     line_cap: int = 200,
     drill_budget: int = 60,
     target_lines: int | None = None,
+    max_line_chars: int | None = None,
 ) -> PlanResult:
+    def cost(text: str) -> int:
+        if max_line_chars is None:
+            return 1
+        return max(1, len(wrap_text(text, max_line_chars)))
+
     deficit = {t.label: t.required_count for t in targets}
     achieved_natural = {t.label: 0 for t in targets}
     achieved_drill = {t.label: 0 for t in targets}
@@ -90,9 +98,10 @@ def plan(
 
     pool = list(enumerate(candidates))
     lines: list[PromptLine] = []
+    rendered = 0
 
     # Phase 1 — coverage: meet base counts with genuine sentences.
-    while len(lines) < effective_cap and any(d > 0 for d in deficit.values()):
+    while rendered < effective_cap and any(d > 0 for d in deficit.values()):
         best = None
         for idx, text in pool:
             score = _score(text, targets, deficit)
@@ -106,6 +115,7 @@ def plan(
         _, idx, text = best
         pool = [(i, t) for (i, t) in pool if i != idx]
         lines.append(PromptLine(text=text, is_drill=False))
+        rendered += cost(text)
         for t in targets:
             occ = count_occurrences(text, t.label)
             achieved_natural[t.label] += occ
@@ -121,13 +131,13 @@ def plan(
             for t in targets
             if deficit[t.label] > 0
         )
-        fill_limit = max(len(lines), min(target_lines, effective_cap - drill_reserve))
+        fill_limit = max(rendered, min(target_lines, effective_cap - drill_reserve))
         seen_bigrams: set[tuple[str, str]] = set()
         seen_words: set[str] = set()
         for line in lines:
             seen_bigrams |= _bigrams(line.text)
             seen_words |= _words(line.text)
-        while len(lines) < fill_limit and pool:
+        while rendered < fill_limit and pool:
             best = None
             for idx, text in pool:
                 key = (
@@ -142,6 +152,7 @@ def plan(
             _, idx, text = best
             pool = [(i, t) for (i, t) in pool if i != idx]
             lines.append(PromptLine(text=text, is_drill=False))
+            rendered += cost(text)
             seen_bigrams |= _bigrams(text)
             seen_words |= _words(text)
             for t in targets:
@@ -151,14 +162,15 @@ def plan(
 
     # Phase 3 — drill-fill remaining base-coverage gaps, respecting effective_cap.
     for t in targets:
-        if len(lines) >= effective_cap:
+        if rendered >= effective_cap:
             break
         if deficit[t.label] <= 0:
             continue
         for drill_text in _drill_lines(t.label, deficit[t.label], drill_budget):
-            if len(lines) >= effective_cap:
+            if rendered >= effective_cap:
                 break
             lines.append(PromptLine(text=drill_text, is_drill=True))
+            rendered += 1
             occ = count_occurrences(drill_text, t.label)
             achieved_drill[t.label] += occ
             deficit[t.label] = max(0, deficit[t.label] - occ)
