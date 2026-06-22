@@ -1,7 +1,16 @@
 import pytest
 from pydantic import ValidationError
 
-from hwfont_schema import BBox, Candidate, CandidateStatus, Context, Kind, PositionInWord
+from hwfont_schema import (
+    BBox,
+    Candidate,
+    CandidateProvenance,
+    CandidateSet,
+    CandidateStatus,
+    Context,
+    Kind,
+    PositionInWord,
+)
 
 
 def test_candidate_status_members():
@@ -40,9 +49,6 @@ def test_candidate_confidence_bounds():
         _candidate(confidence=1.5)
     with pytest.raises(ValidationError):
         _candidate(confidence=-0.1)
-
-
-from hwfont_schema import CandidateProvenance, CandidateSet
 
 
 def test_candidate_set_roundtrip_and_provenance():

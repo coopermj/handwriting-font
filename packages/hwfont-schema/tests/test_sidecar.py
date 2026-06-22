@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from hwfont_schema.geometry import BBox
-from hwfont_schema.sidecar import CaptureSidecar, Page, Region
+from hwfont_schema.sidecar import CaptureSidecar, Fiducial, Page, Region
 
 
 def _region() -> Region:
@@ -51,9 +51,6 @@ def test_page_source_bounds_round_trips():
     )
     assert Page.model_validate_json(page.model_dump_json()) == page
     assert Page(id="p2", width_px=10, height_px=10, dpi=72).source_bounds is None
-
-
-from hwfont_schema import Fiducial
 
 
 def test_page_fiducials_default_empty_and_roundtrip():
