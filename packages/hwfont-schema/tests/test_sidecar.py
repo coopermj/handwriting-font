@@ -51,3 +51,26 @@ def test_page_source_bounds_round_trips():
     )
     assert Page.model_validate_json(page.model_dump_json()) == page
     assert Page(id="p2", width_px=10, height_px=10, dpi=72).source_bounds is None
+
+
+from hwfont_schema import Fiducial
+
+
+def test_page_fiducials_default_empty_and_roundtrip():
+    page = Page(id="p0", width_px=1404, height_px=1872, dpi=226)
+    assert page.fiducials == []
+
+    page2 = Page(
+        id="p0",
+        width_px=1404,
+        height_px=1872,
+        dpi=226,
+        fiducials=[
+            Fiducial(id="tl", x=40.0, y=40.0),
+            Fiducial(id="tr", x=1364.0, y=40.0),
+            Fiducial(id="bl", x=40.0, y=1832.0),
+            Fiducial(id="br", x=1364.0, y=1832.0),
+        ],
+    )
+    assert Page.model_validate_json(page2.model_dump_json()) == page2
+    assert {f.id for f in page2.fiducials} == {"tl", "tr", "bl", "br"}

@@ -3,6 +3,14 @@ from pydantic import BaseModel, Field
 from hwfont_schema.geometry import BBox
 
 
+class Fiducial(BaseModel):
+    """A printed corner registration mark, at a known center in source-image pixels."""
+
+    id: str
+    x: float
+    y: float
+
+
 class Region(BaseModel):
     """A ruled row on the capture template the writer fills in with a known prompt."""
 
@@ -22,6 +30,7 @@ class Page(BaseModel):
     height_px: int = Field(gt=0)
     dpi: int = Field(gt=0)
     source_bounds: BBox | None = None
+    fiducials: list[Fiducial] = Field(default_factory=list)
     regions: list[Region] = Field(default_factory=list)
 
 

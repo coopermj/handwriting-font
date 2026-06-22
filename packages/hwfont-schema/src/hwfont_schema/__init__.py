@@ -8,7 +8,7 @@ from hwfont_schema.enums import (
 from hwfont_schema.geometry import BBox
 from hwfont_schema.candidate import Candidate, CandidateProvenance, CandidateSet
 from hwfont_schema.sample import Context, Metrics, Sample, Target
-from hwfont_schema.sidecar import CaptureSidecar, Page, Region
+from hwfont_schema.sidecar import CaptureSidecar, Fiducial, Page, Region
 from hwfont_schema.store import CoverageRow, GlyphStore
 from hwfont_schema.strokes import Contour, StrokeData, StrokePoint
 
@@ -20,6 +20,7 @@ __all__ = [
     "Contour",
     "StrokePoint",
     "CaptureSidecar",
+    "Fiducial",
     "Page",
     "Region",
     "Sample",
