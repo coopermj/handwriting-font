@@ -4,7 +4,7 @@ from pathlib import Path
 
 from reportlab.pdfgen import canvas
 
-from capture_template.layout import LayoutModel
+from capture_template.layout import LayoutModel, fiducials
 
 
 def px_to_pt(px: float, dpi: int) -> float:
@@ -34,5 +34,13 @@ def render_pdf(model: LayoutModel, out_path: str | Path) -> None:
             c.setFillColorRGB(0.6, 0.6, 0.6)
             c.setFont("Helvetica", px_to_pt(cfg.prompt_font_px, cfg.dpi))
             c.drawString(x0, y_prompt, row.prompt_text)
+
+        # corner registration marks — solid dark dots at known page positions
+        c.setFillColorRGB(0, 0, 0)
+        r_pt = px_to_pt(cfg.fiducial_radius_px, cfg.dpi)
+        for mark in fiducials(cfg):
+            x_pt = px_to_pt(mark.x, cfg.dpi)
+            y_pt = page_h_pt - px_to_pt(mark.y, cfg.dpi)
+            c.circle(x_pt, y_pt, r_pt, stroke=0, fill=1)
         c.showPage()
     c.save()

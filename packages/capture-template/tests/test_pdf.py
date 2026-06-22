@@ -38,3 +38,27 @@ def test_render_pdf_writes_expected_page_count(tmp_path):
     media = reader.pages[0].mediabox
     assert float(media.width) == pytest.approx(720.0, abs=1.0)
     assert float(media.height) == pytest.approx(1008.0, abs=1.0)
+
+
+from capture_template.layout import LayoutModel, LayoutPage
+
+
+def _cfg_fid():
+    return PageConfig(
+        width_px=1404, height_px=1872, dpi=226, margin_px=80,
+        prompt_font_px=28, prompt_gap_px=12, line_height_px=70,
+        row_pitch_px=150, fiducial_inset_px=40, fiducial_radius_px=12,
+    )
+
+
+def test_pdf_draws_fiducial_marks(tmp_path):
+    model = LayoutModel(config=_cfg_fid(), pages=[LayoutPage(index=0)])
+    out = tmp_path / "capture.pdf"
+    render_pdf(model, out)
+
+    reader = PdfReader(str(out))
+    content = reader.pages[0].get_contents().get_data().decode("latin-1")
+    # filled fiducial circles emit Bézier curve ops ('c') and a fill (reportlab
+    # uses the even-odd fill operator 'f*' for circle(fill=1))
+    assert " c\n" in content or " c " in content
+    assert "\nf*\n" in content or " f*\n" in content
