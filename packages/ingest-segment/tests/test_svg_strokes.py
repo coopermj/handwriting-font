@@ -1,4 +1,4 @@
-from ingest_segment.svg_strokes import RawStroke, parse_svg_strokes
+from ingest_segment.svg_strokes import RawStroke, parse_svg_strokes, separate_ink
 
 # two polylines: one near-black (ink), one light gray (template rule)
 SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100">
@@ -21,3 +21,13 @@ def test_parse_returns_strokes_with_points_and_color(tmp_path):
     pts = dark[0].points
     assert len(pts) >= 2
     assert abs(pts[0][0] - 10) < 2 and abs(pts[0][1] - 10) < 2
+
+
+def test_separate_ink_keeps_only_dark_strokes():
+    strokes = [
+        RawStroke(points=[(0, 0), (1, 1)], luminance=0.05),  # ink
+        RawStroke(points=[(0, 0), (1, 0)], luminance=0.7),   # template gray
+    ]
+    ink = separate_ink(strokes)
+    assert len(ink) == 1
+    assert ink[0].luminance == 0.05

@@ -57,3 +57,12 @@ def parse_svg_strokes(svg_path: str | Path) -> list[RawStroke]:
         if len(pts) >= 2:
             strokes.append(RawStroke(points=pts, luminance=_parse_color_luminance(attrs.get("stroke"))))
     return strokes
+
+
+# template rules/prompts render light gray (~0.6-0.8); ink is near-black.
+_INK_LUMINANCE_THRESHOLD = 0.5
+
+
+def separate_ink(strokes: list[RawStroke], threshold: float = _INK_LUMINANCE_THRESHOLD) -> list[RawStroke]:
+    """Keep only the writer's ink strokes, dropping the printed template by luminance."""
+    return [s for s in strokes if s.is_dark(threshold)]
