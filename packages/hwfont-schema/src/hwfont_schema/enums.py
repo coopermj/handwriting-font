@@ -24,3 +24,8 @@ class Quality(str, Enum):
     good = "good"
     marginal = "marginal"
     bad = "bad"
+
+
+class CandidateStatus(str, Enum):
+    pending = "pending"
+    needs_review = "needs_review"

@@ -1,4 +1,10 @@
-from hwfont_schema.enums import Kind, PositionInWord, Quality, ReviewStatus
+from hwfont_schema.enums import (
+    CandidateStatus,
+    Kind,
+    PositionInWord,
+    Quality,
+    ReviewStatus,
+)
 from hwfont_schema.geometry import BBox
 from hwfont_schema.sample import Context, Metrics, Sample, Target
 from hwfont_schema.sidecar import CaptureSidecar, Page, Region
@@ -19,6 +25,7 @@ __all__ = [
     "Target",
     "Context",
     "Metrics",
+    "CandidateStatus",
     "Kind",
     "PositionInWord",
     "ReviewStatus",
