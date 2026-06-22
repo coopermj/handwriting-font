@@ -5,3 +5,13 @@ __pycache__/
 .eggs/
 dist/
 build/
+
+# secrets — never commit
+.env
+.env.*
+
+# macOS cruft
+.DS_Store
+
+# capture-template generated output
+packages/capture-template/hcpdf/
