@@ -26,3 +26,27 @@ class Candidate(BaseModel):
     alignment_method: str
     model: str
     created_at: str  # ISO-8601, supplied by the caller
+
+
+class CandidateProvenance(BaseModel):
+    """Where a CandidateSet came from and how it was aligned (un-reproducible run metadata)."""
+
+    source_page_id: str
+    source_raster: str
+    source_svg: str | None = None
+    alignment_method: str
+    alignment_residual_px: float | None = None
+    model: str
+
+
+class CandidateSet(BaseModel):
+    """Contract emitted by ingest-segment and consumed by review.
+
+    Serialized as a `candidates.json` manifest in a directory, with per-candidate
+    `strokes/<id>.json` and `crop/<id>.png` sidecar files (see ingest-segment's
+    candidates_out). Candidates are stored sorted lowest-confidence-first.
+    """
+
+    version: str = "1"
+    provenance: CandidateProvenance
+    candidates: list[Candidate] = Field(default_factory=list)

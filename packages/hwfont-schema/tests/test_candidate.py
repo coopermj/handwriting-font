@@ -40,3 +40,29 @@ def test_candidate_confidence_bounds():
         _candidate(confidence=1.5)
     with pytest.raises(ValidationError):
         _candidate(confidence=-0.1)
+
+
+from hwfont_schema import CandidateProvenance, CandidateSet
+
+
+def test_candidate_set_roundtrip_and_provenance():
+    cs = CandidateSet(
+        provenance=CandidateProvenance(
+            source_page_id="p0",
+            source_raster="page0.png",
+            source_svg="page0.svg",
+            alignment_method="fiducial",
+            alignment_residual_px=1.4,
+            model="claude-opus-4-8",
+        ),
+        candidates=[_candidate(id="c1", confidence=0.9), _candidate(id="c2", confidence=0.2)],
+    )
+    assert CandidateSet.model_validate_json(cs.model_dump_json()) == cs
+    # provenance fields that are unknown for a raster-only run are optional
+    prov = CandidateProvenance(
+        source_page_id="p0",
+        source_raster="page0.png",
+        alignment_method="geometric_scale",
+        model="claude-opus-4-8",
+    )
+    assert prov.source_svg is None and prov.alignment_residual_px is None
