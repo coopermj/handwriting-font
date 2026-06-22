@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from hwfont_schema import BBox, CaptureSidecar, Page, Region
 
-from capture_template.layout import LayoutModel
+from capture_template.layout import LayoutModel, fiducials
 
 
 def build_sidecar(model: LayoutModel) -> CaptureSidecar:
@@ -28,6 +28,7 @@ def build_sidecar(model: LayoutModel) -> CaptureSidecar:
                 height_px=cfg.height_px,
                 dpi=cfg.dpi,
                 source_bounds=BBox(x=0.0, y=0.0, w=float(cfg.width_px), h=float(cfg.height_px)),
+                fiducials=fiducials(cfg),
                 regions=regions,
             )
         )

@@ -70,3 +70,22 @@ def test_region_ids_are_unique():
     sidecar = build_sidecar(build_layout(lines, _targets(), _config()))
     ids = [r.id for p in sidecar.pages for r in p.regions]
     assert len(ids) == len(set(ids)) == 15
+
+
+from capture_template.layout import LayoutModel, LayoutPage, PageConfig
+
+
+def _cfg():
+    return PageConfig(
+        width_px=1404, height_px=1872, dpi=226, margin_px=80,
+        prompt_font_px=28, prompt_gap_px=12, line_height_px=70,
+        row_pitch_px=150, fiducial_inset_px=40,
+    )
+
+
+def test_sidecar_pages_carry_fiducials():
+    model = LayoutModel(config=_cfg(), pages=[LayoutPage(index=0)])
+    sidecar = build_sidecar(model)
+    page = sidecar.pages[0]
+    assert [f.id for f in page.fiducials] == ["tl", "tr", "bl", "br"]
+    assert (page.fiducials[0].x, page.fiducials[0].y) == (40.0, 40.0)
