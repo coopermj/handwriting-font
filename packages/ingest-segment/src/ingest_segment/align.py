@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 
-from hwfont_schema import Fiducial
+from hwfont_schema import Fiducial, Page
 
 # 2x3 affine: [[a, b, tx], [c, d, ty]] mapping (x, y, 1) -> (x', y')
 Affine = np.ndarray
@@ -48,3 +50,47 @@ def residual(
         for i, (px, py) in zip(ids, proj)
     ]
     return float(np.sqrt(np.mean(errs))) if errs else 0.0
+
+
+_DEFAULT_RESIDUAL_THRESHOLD = 6.0
+
+
+@dataclass
+class Alignment:
+    """The chosen export->page-pixel transform plus how it was derived."""
+
+    matrix: Affine
+    method: str  # "fiducial" | "geometric_scale"
+    residual_px: float | None
+    low_confidence: bool
+
+
+def _geometric_scale(export_size: tuple[int, int], page: Page) -> Affine:
+    ew, eh = export_size
+    if ew <= 0 or eh <= 0:
+        raise ValueError(f"invalid export size {export_size}")
+    sx = page.width_px / ew
+    sy = page.height_px / eh
+    return np.array([[sx, 0.0, 0.0], [0.0, sy, 0.0]])
+
+
+def align_page(
+    measured: dict[str, tuple[float, float]],
+    page: Page,
+    export_size: tuple[int, int],
+    residual_threshold: float = _DEFAULT_RESIDUAL_THRESHOLD,
+) -> Alignment:
+    """Pick an export->page-pixel affine: fiducials if usable, else geometric scale."""
+    usable = [f for f in page.fiducials if f.id in measured]
+    if len(usable) >= 3:
+        matrix = estimate_affine(measured, page.fiducials)
+        res = residual(matrix, measured, page.fiducials)
+        return Alignment(
+            matrix=matrix,
+            method="fiducial",
+            residual_px=res,
+            low_confidence=res > residual_threshold,
+        )
+    # fallback: scale export dimensions onto the sidecar's page dimensions
+    matrix = _geometric_scale(export_size, page)
+    return Alignment(matrix=matrix, method="geometric_scale", residual_px=None, low_confidence=True)
