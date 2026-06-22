@@ -1,10 +1,21 @@
 from __future__ import annotations
 
 import base64
+import io
+from typing import Callable
 
+from PIL import Image
 from pydantic import BaseModel, Field
 
-from hwfont_schema import Context, PositionInWord, Region
+from hwfont_schema import (
+    BBox,
+    Candidate,
+    CandidateStatus,
+    Context,
+    Kind,
+    PositionInWord,
+    Region,
+)
 
 VISION_MODEL = "claude-opus-4-8"
 
@@ -127,3 +138,89 @@ class ClaudeVisionClient:
             ],
         )
         return response.parsed_output
+
+
+# a box's confidence below this flags its candidate needs_review
+_LOW_CONFIDENCE = 0.5
+# a stroke is assigned to a box if at least this fraction of its points fall inside
+_STROKE_INSIDE_FRACTION = 0.5
+
+VisionFn = Callable[[bytes, Region], VisionResult]
+
+
+def _crop_png(raster: Image.Image, bbox: BBox) -> bytes:
+    left, top = int(bbox.x), int(bbox.y)
+    right, bottom = int(bbox.x + bbox.w), int(bbox.y + bbox.h)
+    crop = raster.crop((left, top, right, bottom))
+    buf = io.BytesIO()
+    crop.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _points_in_box(points: list[tuple[float, float]], box: BBox) -> float:
+    if not points:
+        return 0.0
+    inside = sum(
+        1 for x, y in points if box.x <= x <= box.x + box.w and box.y <= y <= box.y + box.h
+    )
+    return inside / len(points)
+
+
+def segment_region(
+    region: Region,
+    raster: Image.Image,
+    page_strokes: list[list[tuple[float, float]]],
+    vision: VisionFn,
+    page_id: str,
+    alignment_method: str,
+    page_low_confidence: bool,
+    model: str,
+    created_at: str,
+) -> list[tuple[Candidate, list[list[tuple[float, float]]]]]:
+    """Locate, label, and box each unit in one region; map strokes; build candidates.
+
+    `page_strokes` are aligned ink strokes in page-pixel space. Returns
+    (candidate, assigned_strokes) pairs; the caller writes stroke/crop files.
+    """
+    crop = _crop_png(raster, region.bbox)
+    result = vision(crop, region)
+
+    count_mismatch = len(result.boxes) != len(region.expected_units)
+
+    out: list[tuple[Candidate, list[list[tuple[float, float]]]]] = []
+    for i, box in enumerate(result.boxes):
+        # crop px -> page px: offset by the region crop origin
+        page_bbox = BBox(
+            x=region.bbox.x + box.x,
+            y=region.bbox.y + box.y,
+            w=box.w,
+            h=box.h,
+        )
+        assigned = [
+            s for s in page_strokes if _points_in_box(s, page_bbox) >= _STROKE_INSIDE_FRACTION
+        ]
+        context = derive_context(region.expected_transcript, box.label, i)
+
+        needs_review = (
+            count_mismatch
+            or page_low_confidence
+            or box.confidence < _LOW_CONFIDENCE
+        )
+        status = CandidateStatus.needs_review if needs_review else CandidateStatus.pending
+
+        candidate = Candidate(
+            id=f"{region.id}-{i}",
+            page_id=page_id,
+            region_id=region.id,
+            label=box.label,
+            kind=Kind(box.kind),
+            confidence=box.confidence,
+            bbox=page_bbox,
+            context=context,
+            status=status,
+            alignment_method=alignment_method,
+            model=model,
+            created_at=created_at,
+        )
+        out.append((candidate, assigned))
+    return out
