@@ -6,6 +6,7 @@ from hwfont_schema.enums import (
     ReviewStatus,
 )
 from hwfont_schema.geometry import BBox
+from hwfont_schema.candidate import Candidate
 from hwfont_schema.sample import Context, Metrics, Sample, Target
 from hwfont_schema.sidecar import CaptureSidecar, Page, Region
 from hwfont_schema.store import CoverageRow, GlyphStore
@@ -25,6 +26,7 @@ __all__ = [
     "Target",
     "Context",
     "Metrics",
+    "Candidate",
     "CandidateStatus",
     "Kind",
     "PositionInWord",
