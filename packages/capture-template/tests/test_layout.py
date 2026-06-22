@@ -1,7 +1,7 @@
 import pytest
 from hwfont_schema import Kind, Target
 
-from capture_template.layout import PageConfig, build_layout, rows_per_page
+from capture_template.layout import PageConfig, build_layout, fiducials, rows_per_page
 from capture_template.planner import PromptLine
 
 
@@ -101,9 +101,6 @@ def test_wrapped_rows_paginate_across_pages():
 def test_layout_rejects_nonpositive_max_line_chars():
     with pytest.raises(ValueError):
         build_layout([PromptLine(text="cat", is_drill=False)], _targets(), _config(max_line_chars=0))
-
-
-from capture_template.layout import PageConfig, fiducials
 
 
 def _cfg(**overrides):

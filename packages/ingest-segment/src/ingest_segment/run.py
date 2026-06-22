@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from hwfont_schema import CandidateProvenance, CandidateSet, CaptureSidecar, Page
+from hwfont_schema import Candidate, CandidateProvenance, CandidateSet, CaptureSidecar, Page
 from ingest_segment.align import apply_affine, align_page
 from ingest_segment.candidates_out import write_candidate_set
 from ingest_segment.raster import detect_fiducials, load_raster
@@ -41,7 +41,7 @@ def ingest_page(
     alignment = align_page(measured, page, export_size)
     page_strokes = [apply_affine(alignment.matrix, s) for s in page_strokes_export]
 
-    items: list = []
+    items: list[tuple[Candidate, list[list[tuple[float, float]]]]] = []
     crops: dict[str, bytes] = {}
     for region in page.regions:
         region_items = segment_region(

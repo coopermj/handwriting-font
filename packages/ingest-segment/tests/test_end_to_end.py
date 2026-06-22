@@ -1,6 +1,7 @@
 from PIL import Image, ImageDraw
 
-from capture_template.layout import LayoutModel, LayoutPage, PageConfig, build_layout
+from capture_template.layout import PageConfig, build_layout
+from capture_template.planner import PromptLine
 from capture_template.sidecar_out import build_sidecar
 from capture_template.targets import default_targets
 from ingest_segment.run import ingest_page
@@ -26,8 +27,6 @@ def _raster_from_sidecar_page(page, radius=8):
 def test_capture_template_to_candidate_set(tmp_path):
     cfg = _small_config()
     # one real prompt line through the real layout + sidecar path
-    from capture_template.planner import PromptLine
-
     model = build_layout([PromptLine(text="cat", is_drill=False)], default_targets(), cfg)
     sidecar = build_sidecar(model)
     page = sidecar.pages[0]

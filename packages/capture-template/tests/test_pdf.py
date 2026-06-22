@@ -2,7 +2,7 @@ import pytest
 from hwfont_schema import Kind, Target
 from pypdf import PdfReader
 
-from capture_template.layout import PageConfig, build_layout
+from capture_template.layout import LayoutModel, LayoutPage, PageConfig, build_layout
 from capture_template.pdf import px_to_pt, render_pdf
 from capture_template.planner import PromptLine
 
@@ -38,9 +38,6 @@ def test_render_pdf_writes_expected_page_count(tmp_path):
     media = reader.pages[0].mediabox
     assert float(media.width) == pytest.approx(720.0, abs=1.0)
     assert float(media.height) == pytest.approx(1008.0, abs=1.0)
-
-
-from capture_template.layout import LayoutModel, LayoutPage
 
 
 def _cfg_fid():

@@ -1,6 +1,6 @@
 from hwfont_schema import CaptureSidecar, Kind, Target
 
-from capture_template.layout import PageConfig, build_layout
+from capture_template.layout import LayoutModel, LayoutPage, PageConfig, build_layout
 from capture_template.planner import PromptLine
 from capture_template.sidecar_out import build_sidecar
 
@@ -70,9 +70,6 @@ def test_region_ids_are_unique():
     sidecar = build_sidecar(build_layout(lines, _targets(), _config()))
     ids = [r.id for p in sidecar.pages for r in p.regions]
     assert len(ids) == len(set(ids)) == 15
-
-
-from capture_template.layout import LayoutModel, LayoutPage, PageConfig
 
 
 def _cfg():
