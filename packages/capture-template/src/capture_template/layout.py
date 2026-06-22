@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from hwfont_schema import BBox, Kind, Target
+from hwfont_schema import BBox, Fiducial, Kind, Target
 
 from capture_template.planner import PromptLine
 from capture_template.text_wrap import wrap_text
@@ -19,6 +19,8 @@ class PageConfig:
     line_height_px: int
     row_pitch_px: int
     max_line_chars: int = 88
+    fiducial_inset_px: int = 40
+    fiducial_radius_px: int = 12
 
 
 @dataclass
@@ -46,6 +48,19 @@ class LayoutModel:
 def rows_per_page(config: PageConfig) -> int:
     usable = config.height_px - 2 * config.margin_px
     return usable // config.row_pitch_px
+
+
+def fiducials(config: PageConfig) -> list[Fiducial]:
+    """The 4 corner registration marks for a page, inset from each edge."""
+    inset = config.fiducial_inset_px
+    right = config.width_px - inset
+    bottom = config.height_px - inset
+    return [
+        Fiducial(id="tl", x=float(inset), y=float(inset)),
+        Fiducial(id="tr", x=float(right), y=float(inset)),
+        Fiducial(id="bl", x=float(inset), y=float(bottom)),
+        Fiducial(id="br", x=float(right), y=float(bottom)),
+    ]
 
 
 def _validate(config: PageConfig) -> None:
