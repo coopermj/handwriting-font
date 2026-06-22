@@ -142,7 +142,11 @@ class ClaudeVisionClient:
 
 # a box's confidence below this flags its candidate needs_review
 _LOW_CONFIDENCE = 0.5
-# a stroke is assigned to a box if at least this fraction of its points fall inside
+# a stroke is assigned to a box if at least this fraction of its points fall inside.
+# NOTE: this is a simplified, independent-per-box rule (a straddling stroke can be
+# assigned to more than one box, and unassigned strokes are not separately flagged) —
+# not the design spec's single majority-overlap-box rule. Acceptable for the expected
+# non-overlapping box layout; revisit against a real device export.
 _STROKE_INSIDE_FRACTION = 0.5
 
 VisionFn = Callable[[bytes, Region], VisionResult]
