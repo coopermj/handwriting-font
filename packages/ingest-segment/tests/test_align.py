@@ -1,7 +1,11 @@
-import math
-
-from hwfont_schema import Fiducial
-from ingest_segment.align import apply_affine, estimate_affine, residual
+from hwfont_schema import Fiducial, Page
+from ingest_segment.align import (
+    Alignment,
+    align_page,
+    apply_affine,
+    estimate_affine,
+    residual,
+)
 
 
 def test_recovers_known_scale_and_translation():
@@ -33,10 +37,6 @@ def test_residual_reports_misfit():
     measured["br"] = (110.0, 90.0)  # perturb one mark
     m = estimate_affine(measured, expected)
     assert residual(m, measured, expected) > 1.0
-
-
-from hwfont_schema import Page
-from ingest_segment.align import Alignment, align_page, apply_affine
 
 
 def _page(fids):
