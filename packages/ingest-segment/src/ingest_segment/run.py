@@ -9,6 +9,7 @@ from hwfont_schema import Candidate, CandidateProvenance, CandidateSet, CaptureS
 from ingest_segment.align import apply_affine, align_page
 from ingest_segment.candidates_out import write_candidate_set
 from ingest_segment.raster import detect_fiducials, load_raster
+from ingest_segment.remarkable_svg import load_remarkable_export
 from ingest_segment.segment import (
     VISION_MODEL,
     ClaudeVisionClient,
@@ -16,7 +17,6 @@ from ingest_segment.segment import (
     _crop_png,
     segment_region,
 )
-from ingest_segment.remarkable_svg import load_remarkable_export
 
 
 def ingest_page(

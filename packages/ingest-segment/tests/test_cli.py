@@ -1,9 +1,11 @@
-from PIL import Image, ImageDraw
+import base64 as _b64
+import io as _io
 
 import ingest_segment.run as run_mod
 from hwfont_schema import BBox, CaptureSidecar, Fiducial, Page, Region
 from ingest_segment.run import main
 from ingest_segment.segment import VisionBox, VisionResult
+from PIL import Image, ImageDraw
 
 
 def _write_inputs(tmp_path):
@@ -51,15 +53,6 @@ def test_cli_runs_with_mocked_vision(tmp_path, monkeypatch, capsys):
     assert "2 candidate" in printed  # summary line
     # lowest-confidence-first ordering surfaced 'i' (0.3) before 'h' (0.9)
     assert printed.index("needs_review") < printed.index("pending")
-
-
-import base64 as _b64
-import io as _io
-
-from hwfont_schema import BBox, CaptureSidecar, Fiducial, Page, Region
-from ingest_segment.run import main
-from ingest_segment.segment import VisionBox, VisionResult
-from PIL import Image, ImageDraw
 
 
 def _remarkable_svg_and_sidecar(tmp_path):

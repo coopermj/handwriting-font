@@ -248,7 +248,10 @@ def compose_raster(
     strokes: list[list[tuple[float, float]]],
     page_size: tuple[int, int],
 ) -> Image.Image:
-    """Composite ink centerlines (black) over the template raster (or white)."""
+    """Composite ink centerlines (black) over the template raster (or white).
+
+    Returns an 8-bit grayscale ("L") image.
+    """
     if template_png is not None:
         base = Image.open(io.BytesIO(template_png)).convert("L")
         if base.size != page_size:
@@ -259,7 +262,7 @@ def compose_raster(
     draw = ImageDraw.Draw(base)
     for stroke in strokes:
         if len(stroke) >= 2:
-            draw.line([(x, y) for x, y in stroke], fill=0, width=_INK_WIDTH)
+            draw.line(stroke, fill=0, width=_INK_WIDTH)
     return base
 
 

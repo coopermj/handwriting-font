@@ -5,7 +5,16 @@ import math
 import numpy as np
 from PIL import Image, ImageDraw
 
-from ingest_segment.remarkable_svg import _rdp, _trace, centerline, normalize, parse_svg
+from ingest_segment.remarkable_svg import (
+    RemarkableExport,
+    _rdp,
+    _trace,
+    centerline,
+    compose_raster,
+    load_remarkable_export,
+    normalize,
+    parse_svg,
+)
 
 
 def test_skeletonize_dependency_importable():
@@ -141,9 +150,6 @@ def test_rdp_handles_long_curve_without_recursion_error():
     assert 2 <= len(out) < len(pts)  # simplified, endpoints preserved
 
 
-from ingest_segment.remarkable_svg import compose_raster
-
-
 def _template_png_with_corner_dot():
     img = Image.new("L", (100, 80), color=255)
     ImageDraw.Draw(img).ellipse([2, 2, 10, 10], fill=0)  # a "fiducial" dot near TL
@@ -169,9 +175,6 @@ def test_compose_without_template_is_ink_on_white():
     assert raster.size == (100, 80)
     assert arr[70, 20] == 255        # background white where there is no ink
     assert arr[40, 10] < 128         # ink present
-
-
-from ingest_segment.remarkable_svg import RemarkableExport, load_remarkable_export
 
 
 def test_load_remarkable_export_end_to_end(tmp_path):
