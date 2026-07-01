@@ -70,7 +70,7 @@ def normalize(points: list[tuple[float, float]], viewbox: ViewBox) -> list[tuple
     return [(x - minx, y - miny) for x, y in points]
 
 
-_MASK_PAD = 3          # padding around a path's mask, in pixels
+_MASK_PAD = 3          # blank border around a path's mask so edge ink isn't clipped by skeletonize
 _MIN_SKELETON_PX = 4   # skeletons smaller than this collapse to a centroid stub
 _RDP_EPSILON = 1.0     # Douglas-Peucker simplification tolerance, in pixels
 _MIN_RING_AREA = 1.0   # rings with less filled area than this (px^2) are dropped
@@ -86,7 +86,9 @@ def _neighbors(p: tuple[int, int], pts: set[tuple[int, int]]) -> list[tuple[int,
     ]
 
 
-def _bfs_farthest(src, pts):
+def _bfs_farthest(
+    src: tuple[int, int], pts: set[tuple[int, int]]
+) -> tuple[dict[tuple[int, int], tuple[int, int] | None], tuple[int, int]]:
     """BFS over the skeleton pixel graph; return (prev-map, farthest-pixel)."""
     prev = {src: None}
     dq = deque([src])
@@ -101,7 +103,9 @@ def _bfs_farthest(src, pts):
     return prev, last
 
 
-def _reconstruct(prev, dst):
+def _reconstruct(
+    prev: dict[tuple[int, int], tuple[int, int] | None], dst: tuple[int, int]
+) -> list[tuple[int, int]]:
     out = []
     cur = dst
     while cur is not None:
@@ -141,7 +145,9 @@ def _trace(skel: np.ndarray) -> list[tuple[int, int]]:
     return [(c, r) for (r, c) in path]  # (x, y)
 
 
-def _perp_dist(p, a, b):
+def _perp_dist(
+    p: tuple[float, float], a: tuple[float, float], b: tuple[float, float]
+) -> float:
     (px, py), (ax, ay), (bx, by) = p, a, b
     if (ax, ay) == (bx, by):
         return math.hypot(px - ax, py - ay)
@@ -150,20 +156,31 @@ def _perp_dist(p, a, b):
 
 
 def _rdp(points: list[tuple[float, float]], eps: float) -> list[tuple[float, float]]:
-    """Douglas-Peucker polyline simplification."""
-    if len(points) < 3:
+    """Douglas-Peucker polyline simplification.
+
+    Iterative (explicit stack) rather than recursive: a long skeleton path can run to
+    thousands of points, and recursive RDP hits O(n) depth on smoothly curving input,
+    which would blow Python's recursion limit.
+    """
+    n = len(points)
+    if n < 3:
         return points
-    start, end = points[0], points[-1]
-    dmax, idx = 0.0, 0
-    for i in range(1, len(points) - 1):
-        d = _perp_dist(points[i], start, end)
-        if d > dmax:
-            dmax, idx = d, i
-    if dmax > eps:
-        left = _rdp(points[: idx + 1], eps)
-        right = _rdp(points[idx:], eps)
-        return left[:-1] + right
-    return [start, end]
+    keep = [False] * n
+    keep[0] = keep[n - 1] = True
+    stack = [(0, n - 1)]
+    while stack:
+        start, end = stack.pop()
+        a, b = points[start], points[end]
+        dmax, idx = 0.0, -1
+        for i in range(start + 1, end):
+            d = _perp_dist(points[i], a, b)
+            if d > dmax:
+                dmax, idx = d, i
+        if idx != -1 and dmax > eps:
+            keep[idx] = True
+            stack.append((start, idx))
+            stack.append((idx, end))
+    return [points[i] for i in range(n) if keep[i]]
 
 
 def centerline(ring: list[tuple[float, float]]) -> list[tuple[float, float]] | None:

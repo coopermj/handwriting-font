@@ -1,10 +1,11 @@
 import base64
 import io
+import math
 
 import numpy as np
 from PIL import Image
 
-from ingest_segment.remarkable_svg import _trace, centerline, normalize, parse_svg
+from ingest_segment.remarkable_svg import _rdp, _trace, centerline, normalize, parse_svg
 
 
 def test_skeletonize_dependency_importable():
@@ -120,3 +121,12 @@ def test_trace_closed_loop_walks_the_ring():
     skel[1:4, 1:4] = False
     traced = _trace(skel)
     assert len(traced) >= 12  # walks most of the 16-pixel perimeter
+
+
+def test_rdp_handles_long_curve_without_recursion_error():
+    # a smoothly curving 5000-point polyline is RDP's worst case for recursion depth;
+    # the iterative implementation must simplify it without blowing the stack.
+    pts = [(float(i), 20.0 * math.sin(i / 80.0)) for i in range(5000)]
+    out = _rdp(pts, 1.0)
+    assert out[0] == pts[0] and out[-1] == pts[-1]
+    assert 2 <= len(out) < len(pts)  # simplified, endpoints preserved
