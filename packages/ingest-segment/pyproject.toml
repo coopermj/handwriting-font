@@ -12,7 +12,6 @@ dependencies = [
     "anthropic>=0.40",
     "pillow>=10.0",
     "numpy>=1.26",
-    "svgpathtools>=1.6",
     "scikit-image>=0.22",
 ]
 
