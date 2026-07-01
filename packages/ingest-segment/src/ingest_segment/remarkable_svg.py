@@ -73,6 +73,7 @@ def normalize(points: list[tuple[float, float]], viewbox: ViewBox) -> list[tuple
 _MASK_PAD = 3          # padding around a path's mask, in pixels
 _MIN_SKELETON_PX = 4   # skeletons smaller than this collapse to a centroid stub
 _RDP_EPSILON = 1.0     # Douglas-Peucker simplification tolerance, in pixels
+_MIN_RING_AREA = 1.0   # rings with less filled area than this (px^2) are dropped
 
 
 def _neighbors(p: tuple[int, int], pts: set[tuple[int, int]]) -> list[tuple[int, int]]:
@@ -172,6 +173,19 @@ def centerline(ring: list[tuple[float, float]]) -> list[tuple[float, float]] | N
     """
     if len(ring) < 3:
         return ring if len(ring) >= 2 else None
+
+    # shoelace area: a collinear/zero-area ring has no ink to skeletonize.
+    # (PIL still draws collinear points as a 1px line, so the mask check below
+    # would not catch it — drop it explicitly here.)
+    area = abs(
+        sum(
+            ring[i][0] * ring[(i + 1) % len(ring)][1]
+            - ring[(i + 1) % len(ring)][0] * ring[i][1]
+            for i in range(len(ring))
+        )
+    ) / 2.0
+    if area < _MIN_RING_AREA:
+        return None
 
     xs = [p[0] for p in ring]
     ys = [p[1] for p in ring]

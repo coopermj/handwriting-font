@@ -1,9 +1,10 @@
 import base64
 import io
 
+import numpy as np
 from PIL import Image
 
-from ingest_segment.remarkable_svg import centerline, normalize, parse_svg
+from ingest_segment.remarkable_svg import _trace, centerline, normalize, parse_svg
 
 
 def test_skeletonize_dependency_importable():
@@ -100,3 +101,22 @@ def test_centerline_of_vertical_bar_is_vertical():
     xs = [p[0] for p in line]
     assert min(ys) < 16 and max(ys) > 54
     assert max(xs) - min(xs) <= 3
+
+
+def test_centerline_zero_area_ring_returns_none():
+    assert centerline([(0.0, 0.0), (10.0, 0.0), (20.0, 0.0)]) is None  # collinear -> no area
+
+
+def test_centerline_small_blob_returns_stub():
+    ring = [(0.0, 0.0), (4.0, 0.0), (4.0, 4.0), (0.0, 4.0)]  # tiny -> stub
+    line = centerline(ring)
+    assert line is not None and len(line) >= 2
+
+
+def test_trace_closed_loop_walks_the_ring():
+    # 5x5 square ring skeleton (border True, center False) -> a closed loop
+    skel = np.zeros((5, 5), dtype=bool)
+    skel[0, :] = skel[4, :] = skel[:, 0] = skel[:, 4] = True
+    skel[1:4, 1:4] = False
+    traced = _trace(skel)
+    assert len(traced) >= 12  # walks most of the 16-pixel perimeter
