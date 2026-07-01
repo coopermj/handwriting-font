@@ -126,8 +126,10 @@ def plan(
     # Phase 2 — variety-fill: add genuine sentences (never drills) up to target_lines,
     # choosing the most context-novel candidate each step (new bigrams, then new words).
     if target_lines is not None:
-        # Reserve room so phase-3 coverage drills aren't crowded out by variety-fill
-        # when target_lines pushes effective_cap above what's left for mandatory drills.
+        # Reserve the row-cost of the mandatory Phase-3 drills out of the variety
+        # budget so variety-fill doesn't push the booklet past target_lines. (Coverage
+        # is guaranteed regardless now that Phase 3 is unconditional; this only keeps
+        # total length near the requested target.)
         drill_reserve = sum(
             cost(dl)
             for t in targets
@@ -170,7 +172,6 @@ def plan(
             continue
         for drill_text in _drill_lines(t.label, deficit[t.label], drill_budget):
             lines.append(PromptLine(text=drill_text, is_drill=True))
-            rendered += cost(drill_text)
             occ = count_occurrences(drill_text, t.label)
             achieved_drill[t.label] += occ
             deficit[t.label] = max(0, deficit[t.label] - occ)

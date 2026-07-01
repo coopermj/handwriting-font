@@ -4,7 +4,7 @@ import pytest
 from hwfont_schema import CaptureSidecar
 
 import capture_template as ct
-from capture_template.generate import generate, main, UnmetCoverageError
+from capture_template.generate import _default_config, generate, main, UnmetCoverageError
 from capture_template.layout import PageConfig
 
 
@@ -284,9 +284,6 @@ def test_generate_wraps_long_quotation_into_multiple_regions(tmp_path):
     total_regions = sum(len(p.regions) for p in sidecar.pages)
     # the long quote alone is ~130 chars at a 40-char budget -> >= 3 wrapped regions
     assert total_regions >= 3
-
-
-from capture_template.generate import _default_config, generate
 
 
 def test_default_config_uses_handwriting_line_width():

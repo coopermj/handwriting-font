@@ -159,10 +159,6 @@ def test_plan_max_line_chars_none_is_one_row_per_entry():
     assert len(result.lines) == 1
 
 
-from capture_template.planner import plan
-from hwfont_schema import Kind, Target
-
-
 def _wraps_to_two_rows_with_one_a(i: int) -> str:
     # "a" + 7 filler + space + 8 filler -> exactly one 'a', 16 chars -> 2 rows at mlc=8
     return "a" + chr(98 + i) * 7 + " " + chr(112 + i) * 8
