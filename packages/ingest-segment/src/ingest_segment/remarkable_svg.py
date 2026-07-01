@@ -36,7 +36,7 @@ def parse_svg(svg_path: str | Path) -> tuple[ViewBox, bytes | None, list[list[tu
 
     vb = root.get("viewBox")
     if vb:
-        minx, miny, w, h = (float(v) for v in vb.split())
+        minx, miny, w, h = (float(v) for v in re.split(r"[,\s]+", vb.strip()))
     else:
         minx, miny = 0.0, 0.0
         w, h = float(root.get("width", "0")), float(root.get("height", "0"))
