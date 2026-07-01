@@ -16,7 +16,7 @@ from ingest_segment.segment import (
     _crop_png,
     segment_region,
 )
-from ingest_segment.svg_strokes import parse_svg_strokes, separate_ink
+from ingest_segment.remarkable_svg import load_remarkable_export
 
 
 def ingest_page(
@@ -77,18 +77,13 @@ def _build_vision_client(model: str) -> VisionFn:
     return ClaudeVisionClient(anthropic.Anthropic(), model=model)
 
 
-def _ink_strokes_from_svg(svg_path: str) -> list[list[tuple[float, float]]]:
-    ink = separate_ink(parse_svg_strokes(svg_path))
-    return [s.points for s in ink]
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Segment a written-on capture page into candidate glyph samples."
     )
-    parser.add_argument("--raster", required=True, help="page raster PNG (required)")
+    parser.add_argument("--raster", default=None, help="page raster PNG (optional; extracted from --svg if omitted)")
     parser.add_argument("--sidecar", required=True, help="capture.sidecar.json (Contract X)")
-    parser.add_argument("--svg", default=None, help="optional SVG ink export")
+    parser.add_argument("--svg", default=None, help="reMarkable SVG export (self-contains the page raster + ink)")
     parser.add_argument("--out", required=True, help="output CandidateSet directory")
     parser.add_argument("--page-index", type=int, default=0, help="page in the sidecar (default: 0)")
     parser.add_argument("--force", action="store_true", help="overwrite an existing output dir")
@@ -102,20 +97,31 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     page = sidecar.pages[args.page_index]
 
-    raster = load_raster(args.raster)
-    if raster.size != (page.width_px, page.height_px):
+    export = None
+    if args.svg:
+        export = load_remarkable_export(args.svg)
         print(
-            f"raster size {raster.size} != sidecar page size "
-            f"({page.width_px}, {page.height_px})"
+            f"reMarkable export: {len(export.strokes)} stroke(s), "
+            f"{export.dropped_paths} dropped, template={export.has_template}"
         )
+
+    if args.raster:
+        raster = load_raster(args.raster)
+    elif export is not None:
+        raster = export.page_raster
+    else:
+        print("provide --raster and/or --svg (a reMarkable export)")
         return 1
 
-    if args.svg:
-        strokes_export = _ink_strokes_from_svg(args.svg)
-        export_size = raster.size  # SVG ink already in raster-pixel space when paired with this raster
-    else:
-        strokes_export = []
-        export_size = raster.size
+    strokes_export = export.strokes if export is not None else []
+    export_size = raster.size
+
+    if raster.size != (page.width_px, page.height_px):
+        # not fatal: the fiducial affine reconciles the export's pixel space to the sidecar's
+        print(
+            f"note: raster size {raster.size} != sidecar page size "
+            f"({page.width_px}, {page.height_px}); alignment will reconcile."
+        )
 
     created_at = args.created_at or "1970-01-01T00:00:00Z"
     cs = ingest_page(
@@ -127,7 +133,7 @@ def main(argv: list[str] | None = None) -> int:
         model=args.model,
         created_at=created_at,
         out_dir=args.out,
-        source_raster=Path(args.raster).name,
+        source_raster=Path(args.raster).name if args.raster else "page.png",
         source_svg=Path(args.svg).name if args.svg else None,
         force=args.force,
     )
