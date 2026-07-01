@@ -3,7 +3,7 @@ import io
 
 from PIL import Image
 
-from ingest_segment.remarkable_svg import parse_svg
+from ingest_segment.remarkable_svg import normalize, parse_svg
 
 
 def test_skeletonize_dependency_importable():
@@ -68,3 +68,14 @@ def test_parse_svg_missing_viewbox_uses_width_height(tmp_path):
     viewbox, _, rings = parse_svg(p)
     assert viewbox == (0.0, 0.0, 120.0, 90.0)
     assert len(rings) == 1
+
+
+def test_normalize_shifts_by_viewbox_min():
+    ring = [(-40.0, 10.0), (-20.0, 10.0)]
+    out = normalize(ring, (-50.0, 0.0, 100.0, 80.0))
+    assert out == [(10.0, 10.0), (30.0, 10.0)]  # +50 in x, +0 in y
+
+
+def test_normalize_identity_when_origin_zero():
+    ring = [(5.0, 5.0), (9.0, 12.0)]
+    assert normalize(ring, (0.0, 0.0, 100.0, 100.0)) == ring

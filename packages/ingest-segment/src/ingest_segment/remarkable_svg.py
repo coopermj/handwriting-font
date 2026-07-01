@@ -55,3 +55,9 @@ def parse_svg(svg_path: str | Path) -> tuple[ViewBox, bytes | None, list[list[tu
                 rings.append(ring)
 
     return (minx, miny, w, h), template, rings
+
+
+def normalize(points: list[tuple[float, float]], viewbox: ViewBox) -> list[tuple[float, float]]:
+    """Translate points by -viewBox.min so they land in page-pixel space (0..w, 0..h)."""
+    minx, miny, _, _ = viewbox
+    return [(x - minx, y - miny) for x, y in points]
