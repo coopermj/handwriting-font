@@ -3,7 +3,7 @@ import io
 import math
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from ingest_segment.remarkable_svg import _rdp, _trace, centerline, normalize, parse_svg
 
@@ -130,3 +130,33 @@ def test_rdp_handles_long_curve_without_recursion_error():
     out = _rdp(pts, 1.0)
     assert out[0] == pts[0] and out[-1] == pts[-1]
     assert 2 <= len(out) < len(pts)  # simplified, endpoints preserved
+
+
+from ingest_segment.remarkable_svg import compose_raster
+
+
+def _template_png_with_corner_dot():
+    img = Image.new("L", (100, 80), color=255)
+    ImageDraw.Draw(img).ellipse([2, 2, 10, 10], fill=0)  # a "fiducial" dot near TL
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_compose_over_template_keeps_fiducials_and_adds_ink():
+    template = _template_png_with_corner_dot()
+    strokes = [[(20.0, 40.0), (80.0, 40.0)]]  # horizontal ink line
+    raster = compose_raster(template, strokes, (100, 80))
+    arr = np.asarray(raster.convert("L"))
+    assert raster.size == (100, 80)
+    assert arr[6, 6] < 128           # fiducial dot preserved
+    assert arr[40, 50] < 128         # ink drawn along the stroke
+
+
+def test_compose_without_template_is_ink_on_white():
+    strokes = [[(10.0, 10.0), (10.0, 70.0)]]
+    raster = compose_raster(None, strokes, (100, 80))
+    arr = np.asarray(raster.convert("L"))
+    assert raster.size == (100, 80)
+    assert arr[70, 20] == 255        # background white where there is no ink
+    assert arr[40, 10] < 128         # ink present

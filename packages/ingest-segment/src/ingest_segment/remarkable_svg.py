@@ -231,3 +231,26 @@ def centerline(ring: list[tuple[float, float]]) -> list[tuple[float, float]] | N
     traced = [(x + minx - _MASK_PAD, y + miny - _MASK_PAD) for x, y in _trace(skel)]
     simplified = _rdp(traced, _RDP_EPSILON)
     return simplified if len(simplified) >= 2 else None
+
+
+_INK_WIDTH = 3  # px; render centerlines thick enough for vision to read
+
+
+def compose_raster(
+    template_png: bytes | None,
+    strokes: list[list[tuple[float, float]]],
+    page_size: tuple[int, int],
+) -> Image.Image:
+    """Composite ink centerlines (black) over the template raster (or white)."""
+    if template_png is not None:
+        base = Image.open(io.BytesIO(template_png)).convert("L")
+        if base.size != page_size:
+            base = base.resize(page_size)
+    else:
+        base = Image.new("L", page_size, color=255)
+
+    draw = ImageDraw.Draw(base)
+    for stroke in strokes:
+        if len(stroke) >= 2:
+            draw.line([(x, y) for x, y in stroke], fill=0, width=_INK_WIDTH)
+    return base
