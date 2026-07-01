@@ -3,7 +3,7 @@ import io
 
 from PIL import Image
 
-from ingest_segment.remarkable_svg import normalize, parse_svg
+from ingest_segment.remarkable_svg import centerline, normalize, parse_svg
 
 
 def test_skeletonize_dependency_importable():
@@ -79,3 +79,24 @@ def test_normalize_shifts_by_viewbox_min():
 def test_normalize_identity_when_origin_zero():
     ring = [(5.0, 5.0), (9.0, 12.0)]
     assert normalize(ring, (0.0, 0.0, 100.0, 100.0)) == ring
+
+
+def test_centerline_of_filled_bar_is_horizontal_midline():
+    # a 40-wide x 8-tall filled rectangle -> centerline ~ horizontal line at mid-height
+    ring = [(10.0, 20.0), (50.0, 20.0), (50.0, 28.0), (10.0, 28.0)]
+    line = centerline(ring)
+    assert line is not None and len(line) >= 2
+    xs = [p[0] for p in line]
+    ys = [p[1] for p in line]
+    assert min(xs) < 16 and max(xs) > 44          # spans the bar horizontally
+    assert max(ys) - min(ys) <= 3                  # roughly flat, near mid-height (~24)
+    assert 22 <= sum(ys) / len(ys) <= 26
+
+
+def test_centerline_of_vertical_bar_is_vertical():
+    ring = [(30.0, 10.0), (36.0, 10.0), (36.0, 60.0), (30.0, 60.0)]
+    line = centerline(ring)
+    ys = [p[1] for p in line]
+    xs = [p[0] for p in line]
+    assert min(ys) < 16 and max(ys) > 54
+    assert max(xs) - min(xs) <= 3

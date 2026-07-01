@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 import base64
+import io
+import math
 import re
 import xml.etree.ElementTree as ET
+from collections import deque
 from pathlib import Path
+
+import numpy as np
+from PIL import Image, ImageDraw
+from skimage.morphology import skeletonize
 
 _XLINK_HREF = "{http://www.w3.org/1999/xlink}href"
 _NUM = re.compile(r"-?\d+(?:\.\d+)?")
@@ -61,3 +68,135 @@ def normalize(points: list[tuple[float, float]], viewbox: ViewBox) -> list[tuple
     """Translate points by -viewBox.min so they land in page-pixel space (0..w, 0..h)."""
     minx, miny, _, _ = viewbox
     return [(x - minx, y - miny) for x, y in points]
+
+
+_MASK_PAD = 3          # padding around a path's mask, in pixels
+_MIN_SKELETON_PX = 4   # skeletons smaller than this collapse to a centroid stub
+_RDP_EPSILON = 1.0     # Douglas-Peucker simplification tolerance, in pixels
+
+
+def _neighbors(p: tuple[int, int], pts: set[tuple[int, int]]) -> list[tuple[int, int]]:
+    r, c = p
+    return [
+        (r + dr, c + dc)
+        for dr in (-1, 0, 1)
+        for dc in (-1, 0, 1)
+        if (dr or dc) and (r + dr, c + dc) in pts
+    ]
+
+
+def _bfs_farthest(src, pts):
+    """BFS over the skeleton pixel graph; return (prev-map, farthest-pixel)."""
+    prev = {src: None}
+    dq = deque([src])
+    last = src
+    while dq:
+        cur = dq.popleft()
+        last = cur
+        for nb in _neighbors(cur, pts):
+            if nb not in prev:
+                prev[nb] = cur
+                dq.append(nb)
+    return prev, last
+
+
+def _reconstruct(prev, dst):
+    out = []
+    cur = dst
+    while cur is not None:
+        out.append(cur)
+        cur = prev[cur]
+    out.reverse()
+    return out
+
+
+def _trace(skel: np.ndarray) -> list[tuple[int, int]]:
+    """Trace a 1-px skeleton into an ordered list of (x, y) points.
+
+    Open/branched skeletons -> the longest endpoint-to-endpoint path (double BFS,
+    the tree-diameter trick). Closed loops (no endpoints) -> a greedy walk from the
+    topmost-leftmost pixel.
+    """
+    pts = {(int(r), int(c)) for r, c in np.argwhere(skel)}
+    if not pts:
+        return []
+    endpoints = [p for p in pts if len(_neighbors(p, pts)) == 1]
+    if endpoints:
+        _, far = _bfs_farthest(endpoints[0], pts)
+        prev, far2 = _bfs_farthest(far, pts)
+        path = _reconstruct(prev, far2)
+    else:
+        start = min(pts)  # topmost-leftmost (row, col)
+        path = [start]
+        visited = {start}
+        cur = start
+        while True:
+            nxts = [nb for nb in _neighbors(cur, pts) if nb not in visited]
+            if not nxts:
+                break
+            cur = min(nxts)
+            path.append(cur)
+            visited.add(cur)
+    return [(c, r) for (r, c) in path]  # (x, y)
+
+
+def _perp_dist(p, a, b):
+    (px, py), (ax, ay), (bx, by) = p, a, b
+    if (ax, ay) == (bx, by):
+        return math.hypot(px - ax, py - ay)
+    num = abs((by - ay) * px - (bx - ax) * py + bx * ay - by * ax)
+    return num / math.hypot(bx - ax, by - ay)
+
+
+def _rdp(points: list[tuple[float, float]], eps: float) -> list[tuple[float, float]]:
+    """Douglas-Peucker polyline simplification."""
+    if len(points) < 3:
+        return points
+    start, end = points[0], points[-1]
+    dmax, idx = 0.0, 0
+    for i in range(1, len(points) - 1):
+        d = _perp_dist(points[i], start, end)
+        if d > dmax:
+            dmax, idx = d, i
+    if dmax > eps:
+        left = _rdp(points[: idx + 1], eps)
+        right = _rdp(points[idx:], eps)
+        return left[:-1] + right
+    return [start, end]
+
+
+def centerline(ring: list[tuple[float, float]]) -> list[tuple[float, float]] | None:
+    """Extract one pen centerline from a filled ink ring (page-px in, page-px out).
+
+    Returns None for a zero-area ring (dropped by the caller).
+    """
+    if len(ring) < 3:
+        return ring if len(ring) >= 2 else None
+
+    xs = [p[0] for p in ring]
+    ys = [p[1] for p in ring]
+    minx, miny = math.floor(min(xs)), math.floor(min(ys))
+    w = math.ceil(max(xs)) - minx + 2 * _MASK_PAD + 1
+    h = math.ceil(max(ys)) - miny + 2 * _MASK_PAD + 1
+
+    mask_img = Image.new("1", (w, h), 0)
+    ImageDraw.Draw(mask_img).polygon(
+        [(x - minx + _MASK_PAD, y - miny + _MASK_PAD) for x, y in ring], fill=1
+    )
+    # PIL mode-"1" bytes are 0/255; normalize to canonical 0/1 bool. Some
+    # scikit-image skeletonize builds read raw bytes and misbehave on 255-valued
+    # bools, so `> 0` yields a writable array with canonical byte values.
+    mask = np.array(mask_img, dtype=np.uint8) > 0
+    if not mask.any():
+        return None  # zero-area (collinear) ring
+
+    skel = skeletonize(mask)
+    if int(skel.sum()) < _MIN_SKELETON_PX:
+        cy, cx = (float(v) for v in np.argwhere(mask).mean(axis=0))
+        px = cx + minx - _MASK_PAD
+        py = cy + miny - _MASK_PAD
+        return [(px, py), (px + 0.5, py)]  # centroid stub (valid 2-point contour)
+
+    traced = [(x + minx - _MASK_PAD, y + miny - _MASK_PAD) for x, y in _trace(skel)]
+    simplified = _rdp(traced, _RDP_EPSILON)
+    return simplified if len(simplified) >= 2 else None
