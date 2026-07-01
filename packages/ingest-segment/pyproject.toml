@@ -13,6 +13,7 @@ dependencies = [
     "pillow>=10.0",
     "numpy>=1.26",
     "svgpathtools>=1.6",
+    "scikit-image>=0.22",
 ]
 
 [project.optional-dependencies]
