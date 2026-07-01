@@ -65,12 +65,13 @@ def test_plan_reports_unmet_target_when_drill_budget_too_small():
     assert cov["abcdefgh"].source == "none"
 
 
-def test_plan_respects_line_cap_across_drill_fill():
-    # many distinct targets, tiny line_cap, empty corpus -> drill phase must stop at the cap
+def test_plan_drill_fill_ignores_line_cap_for_mandatory_coverage():
+    # many distinct targets, tiny line_cap, empty corpus -> drills are mandatory
+    # coverage and are NOT bounded by the cap: every target must still be covered.
     targets = [Target(label=ch, kind=Kind.single, required_count=1) for ch in "abcde"]
     result = plan(targets, [], line_cap=2)
-    assert len(result.lines) == 2
-    assert result.all_met is False  # cap reached before all targets drilled
+    assert len(result.lines) == 5
+    assert result.all_met is True  # coverage-first: all targets drilled despite cap
 
 
 def test_plan_without_target_lines_is_unchanged():
@@ -156,3 +157,52 @@ def test_plan_max_line_chars_none_is_one_row_per_entry():
     # without max_line_chars, behavior is unchanged (each entry costs one row)
     result = plan(targets, ["aa bb cc dd ee ff"], target_lines=1)
     assert len(result.lines) == 1
+
+
+from capture_template.planner import plan
+from hwfont_schema import Kind, Target
+
+
+def _wraps_to_two_rows_with_one_a(i: int) -> str:
+    # "a" + 7 filler + space + 8 filler -> exactly one 'a', 16 chars -> 2 rows at mlc=8
+    return "a" + chr(98 + i) * 7 + " " + chr(112 + i) * 8
+
+
+def test_coverage_met_at_narrow_width_despite_small_row_budget():
+    # Regression: narrow rows cost more rows/sentence; a small effective_cap must
+    # NOT stop mandatory coverage. Pre-fix this yields achieved 'a' == 3 (unmet).
+    targets = [Target(label="a", kind=Kind.single, required_count=6)]
+    candidates = [_wraps_to_two_rows_with_one_a(i) for i in range(6)]
+    result = plan(targets, candidates, line_cap=6, target_lines=6, max_line_chars=8)
+    assert result.all_met is True
+    row = next(r for r in result.coverage if r.label == "a")
+    assert row.achieved >= 6
+
+
+def test_coverage_is_width_independent():
+    # Same targets/candidates/budget at a narrow vs wide width -> both fully covered.
+    targets = [Target(label="a", kind=Kind.single, required_count=6)]
+    candidates = [_wraps_to_two_rows_with_one_a(i) for i in range(6)]
+    narrow = plan(targets, candidates, line_cap=6, target_lines=6, max_line_chars=8)
+    wide = plan(targets, candidates, line_cap=6, target_lines=6, max_line_chars=80)
+    assert narrow.all_met is True and wide.all_met is True
+
+
+def test_drill_fill_covers_target_absent_from_pool_uncapped():
+    # 'z' appears in no candidate -> only drills can cover it. Small budget must not
+    # starve Phase 3. Pre-fix: rendered >= effective_cap skips drills -> unmet.
+    targets = [Target(label="z", kind=Kind.single, required_count=4)]
+    candidates = ["hello world", "foo bar qux nope", "lorem ipsum dolor"]  # no 'z'
+    result = plan(targets, candidates, line_cap=2, target_lines=2, max_line_chars=8)
+    row = next(r for r in result.coverage if r.label == "z")
+    assert row.met is True
+    assert row.source == "drill"
+
+
+def test_variety_fill_still_honors_target_lines_floor():
+    # Coverage needs 1 line; a larger target_lines must still pull in variety sentences.
+    targets = [Target(label="a", kind=Kind.single, required_count=1)]
+    candidates = [f"alpha {chr(98 + i)}{chr(98 + i)}{chr(98 + i)}" for i in range(12)]
+    result = plan(targets, candidates, line_cap=200, target_lines=8, max_line_chars=80)
+    assert result.all_met is True
+    assert len(result.lines) >= 5  # variety-fill grew the booklet toward the target

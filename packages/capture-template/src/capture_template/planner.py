@@ -100,9 +100,10 @@ def plan(
     lines: list[PromptLine] = []
     rendered = 0
 
-    # Phase 1 — coverage: meet base counts with genuine sentences. A selected entry
-    # may push `rendered` past effective_cap by its own row-cost; coverage is mandatory.
-    while rendered < effective_cap and any(d > 0 for d in deficit.values()):
+    # Phase 1 — coverage: meet base counts with genuine sentences. Mandatory coverage,
+    # so NOT bounded by effective_cap (narrow rows cost more rows/sentence, but every
+    # target must still be covered). effective_cap / target_lines bound only Phase 2.
+    while any(d > 0 for d in deficit.values()):
         best = None
         for idx, text in pool:
             score = _score(text, targets, deficit)
@@ -162,15 +163,12 @@ def plan(
                 achieved_natural[t.label] += occ
                 deficit[t.label] = max(0, deficit[t.label] - occ)
 
-    # Phase 3 — drill-fill remaining base-coverage gaps, respecting effective_cap.
+    # Phase 3 — drill-fill remaining base-coverage gaps. Mandatory coverage, so NOT
+    # bounded by effective_cap (that budget governs only Phase 2 variety-fill above).
     for t in targets:
-        if rendered >= effective_cap:
-            break
         if deficit[t.label] <= 0:
             continue
         for drill_text in _drill_lines(t.label, deficit[t.label], drill_budget):
-            if rendered >= effective_cap:
-                break
             lines.append(PromptLine(text=drill_text, is_drill=True))
             rendered += cost(drill_text)
             occ = count_occurrences(drill_text, t.label)
