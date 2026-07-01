@@ -284,3 +284,21 @@ def test_generate_wraps_long_quotation_into_multiple_regions(tmp_path):
     total_regions = sum(len(p.regions) for p in sidecar.pages)
     # the long quote alone is ~130 chars at a 40-char budget -> >= 3 wrapped regions
     assert total_regions >= 3
+
+
+from capture_template.generate import _default_config, generate
+
+
+def test_default_config_uses_handwriting_line_width():
+    assert _default_config().max_line_chars == 28
+
+
+def test_generate_meets_coverage_at_default_config(tmp_path):
+    # Coverage-first + the narrow default must still fully cover all bundled targets.
+    result = generate(
+        target_spec_path=None,
+        corpus_dir=None,
+        out_dir=tmp_path / "book",
+        force=True,
+    )
+    assert result.all_met is True

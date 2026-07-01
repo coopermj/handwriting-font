@@ -33,7 +33,9 @@ def _default_config() -> PageConfig:
         prompt_gap_px=12,
         line_height_px=70,
         row_pitch_px=150,
-        max_line_chars=80,  # ~ (1404 - 160) / (28 * 0.55)
+        # sized for handwriting, not the print font: writing area ~1244px wide,
+        # handwritten glyph advance ~44px -> ~28 glyphs fit with right-margin slack.
+        max_line_chars=28,
     )
 
 
@@ -117,7 +119,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--allow-unmet", action="store_true", help="write the booklet even if some targets are unmet")
     parser.add_argument(
         "--pages", type=_positive_int, default=DEFAULT_PAGES,
-        help=f"target booklet length in pages (default: {DEFAULT_PAGES})",
+        help=(
+            f"variety floor in pages (default: {DEFAULT_PAGES}); the booklet always "
+            "grows as needed to meet glyph/ligature coverage"
+        ),
     )
     args = parser.parse_args(argv)
 
