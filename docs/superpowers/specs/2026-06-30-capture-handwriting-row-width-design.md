@@ -42,7 +42,7 @@ while rendered < effective_cap and any(d > 0 for d in deficit.values()):
 
 In `_default_config`, set `max_line_chars = 28` and replace the print-font comment with one noting it is sized for handwriting advance in the writing row (writing area ≈ 1244 px wide; handwritten glyph advance ≈ 44 px). No other geometry changes — `line_height_px`, `row_pitch_px`, margins stay as-is (the reported problem is width, not row height).
 
-### Change 2 — coverage-first Phase 1 (`planner.py`)
+### Change 2 — coverage-first Phases 1 & 3 (`planner.py`)
 
 Remove the `rendered < effective_cap` guard from the Phase 1 coverage loop so it runs until every target's `required_count` is met or no remaining candidate can reduce the deficit:
 
@@ -72,9 +72,27 @@ while any(d > 0 for d in deficit.values()):
         deficit[t.label] = max(0, deficit[t.label] - occ)
 ```
 
-Phase 2 (variety-fill) is unchanged: it still fills to `fill_limit = max(rendered, min(target_lines, effective_cap - drill_reserve))`, so it only adds sentences when the requested page target exceeds the coverage-driven length (a floor). Phase 3 (coverage drills) is unchanged.
+Phase 2 (variety-fill) is unchanged: it still fills to `fill_limit = max(rendered, min(target_lines, effective_cap - drill_reserve))`, so it only adds sentences when the requested page target exceeds the coverage-driven length (a floor).
 
-**Termination:** the deficit is finite (Σ `required_count`) and strictly decreases whenever a scoring candidate is added; when none remains, Phase 1 breaks and Phase 3's synthetic drills (bounded by `drill_budget`) cover the remainder. No unbounded loop.
+**Phase 3 (coverage drills) must also be uncapped.** Phase 3 currently guards each drill with `if rendered >= effective_cap: break`. Once the uncapped Phase 1 has pushed `rendered` past `effective_cap`, those guards would skip Phase 3 entirely, so any target the genuine pool could not fully cover (a glyph/ligature underrepresented in the corpus) would never get its drills — coverage unmet. Remove both `rendered >= effective_cap` breaks from Phase 3 so mandatory drill-fill always clears the remaining deficit:
+
+```python
+# Phase 3 — drill-fill remaining base-coverage gaps. Mandatory coverage, so NOT
+# bounded by effective_cap (that budget governs only Phase 2 variety-fill).
+for t in targets:
+    if deficit[t.label] <= 0:
+        continue
+    for drill_text in _drill_lines(t.label, deficit[t.label], drill_budget):
+        lines.append(PromptLine(text=drill_text, is_drill=True))
+        rendered += cost(drill_text)
+        occ = count_occurrences(drill_text, t.label)
+        achieved_drill[t.label] += occ
+        deficit[t.label] = max(0, deficit[t.label] - occ)
+```
+
+Net rule: mandatory coverage (Phase 1 genuine + Phase 3 drills) is unbounded; optional variety (Phase 2) is bounded by `target_lines`/`effective_cap`.
+
+**Termination:** the deficit is finite (Σ `required_count`) and strictly decreases whenever a scoring candidate or drill is added; when the genuine pool can't reduce it, Phase 1 breaks and Phase 3's synthetic drills (bounded by `drill_budget` per target) cover the remainder. No unbounded loop.
 
 ### Semantics & errors
 
@@ -86,6 +104,7 @@ Phase 2 (variety-fill) is unchanged: it still fills to `fill_limit = max(rendere
   - **Regression:** coverage is met at a narrow `max_line_chars` (e.g. 28) with a small `target_lines` — fails today (66/121), passes after the fix.
   - **Width-independence:** the count of met targets does not decrease when `max_line_chars` is lowered (same targets/corpus, 80 vs 28 → both fully met).
   - **Variety floor preserved:** with `target_lines` well above the coverage-driven length, Phase 2 still fills toward `target_lines` (booklet grows for variety).
+  - **Drill coverage uncapped:** a target that the candidate pool cannot supply (e.g. a glyph absent from the given candidates) is still met via drills at a narrow `max_line_chars` with a small `line_cap`/`target_lines` — proving Phase 3 is no longer starved by the row budget.
 - **`generate`:** assert `_default_config().max_line_chars == 28`; an end-to-end `generate()` on a small corpus/targets reports `all_met` at the default config.
 - **Existing suite:** all current `planner`/`layout`/`pdf`/`sidecar` tests stay green (they pass explicit configs, unaffected by the default change).
 
