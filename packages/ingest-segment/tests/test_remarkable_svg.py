@@ -104,6 +104,15 @@ def test_centerline_of_vertical_bar_is_vertical():
     assert max(xs) - min(xs) <= 3
 
 
+def test_centerline_batch_of_shapes_skeletonizes_without_error():
+    # regression guard for the scikit-image fast_skeletonize segfault: a range of
+    # filled-bar sizes must all skeletonize cleanly (centerline uses method="lee").
+    for w in (8, 20, 40, 80, 160):
+        for h in (6, 10, 30, 70):
+            ring = [(5.0, 5.0), (5.0 + w, 5.0), (5.0 + w, 5.0 + h), (5.0, 5.0 + h)]
+            assert centerline(ring) is not None
+
+
 def test_centerline_zero_area_ring_returns_none():
     assert centerline([(0.0, 0.0), (10.0, 0.0), (20.0, 0.0)]) is None  # collinear -> no area
 

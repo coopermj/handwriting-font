@@ -222,7 +222,13 @@ def centerline(ring: list[tuple[float, float]]) -> list[tuple[float, float]] | N
     if not mask.any():
         return None  # zero-area (collinear) ring
 
-    skel = skeletonize(mask)
+    # method="lee": scikit-image's default 2D skeletonizer (fast_skeletonize,
+    # Zhang-Suen, in _skeletonize_various_cy) has an out-of-bounds read that
+    # intermittently segfaults on valid bordered masks (the fault is ASLR-dependent,
+    # so it only crashes on some process layouts). The Lee 1994 method is a separate
+    # compiled module (_skeletonize_lee_cy), is stable under stress, and yields an
+    # equivalent centerline. See the crash report in this feature's history.
+    skel = skeletonize(mask, method="lee")
     if int(skel.sum()) < _MIN_SKELETON_PX:
         cy, cx = (float(v) for v in np.argwhere(mask).mean(axis=0))
         px = cx + minx - _MASK_PAD
