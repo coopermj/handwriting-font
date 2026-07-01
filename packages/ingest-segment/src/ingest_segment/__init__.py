@@ -9,7 +9,7 @@ from ingest_segment.segment import (
     derive_context,
     segment_region,
 )
-from ingest_segment.svg_strokes import RawStroke, parse_svg_strokes, separate_ink
+from ingest_segment.remarkable_svg import RemarkableExport, load_remarkable_export
 
 __version__ = "0.1.0"
 
@@ -30,8 +30,7 @@ __all__ = [
     "VisionResult",
     "derive_context",
     "segment_region",
-    "RawStroke",
-    "parse_svg_strokes",
-    "separate_ink",
+    "RemarkableExport",
+    "load_remarkable_export",
     "__version__",
 ]
