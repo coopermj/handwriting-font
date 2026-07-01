@@ -160,3 +160,36 @@ def test_compose_without_template_is_ink_on_white():
     assert raster.size == (100, 80)
     assert arr[70, 20] == 255        # background white where there is no ink
     assert arr[40, 10] < 128         # ink present
+
+
+from ingest_segment.remarkable_svg import RemarkableExport, load_remarkable_export
+
+
+def test_load_remarkable_export_end_to_end(tmp_path):
+    # centered viewBox; two filled-bar "strokes"; one collinear (zero-area) path to drop
+    body = (
+        '<path fill="#000000" d="M-40 20 L0 20 L0 28 L-40 28 "/>'
+        '<path fill="#000000" d="M10 40 L40 40 L40 46 L10 46 "/>'
+        '<path fill="#000000" d="M-10 60 L0 60 L10 60 "/>'
+    )
+    svg = _write_svg(tmp_path, body, viewbox="-50 0 100 80")
+
+    exp = load_remarkable_export(svg)
+    assert isinstance(exp, RemarkableExport)
+    assert exp.page_size == (100, 80)
+    assert exp.viewbox_offset == (-50.0, 0.0)
+    assert exp.has_template is True
+    assert exp.dropped_paths == 1                 # the collinear path
+    assert len(exp.strokes) == 2                  # two real bars
+    # strokes are normalized into page-px (0..100), no negative x
+    all_x = [x for s in exp.strokes for x, _ in s]
+    assert min(all_x) >= 0 and max(all_x) <= 100
+    assert exp.page_raster.size == (100, 80)
+
+
+def test_load_remarkable_export_without_template(tmp_path):
+    svg = _write_svg(tmp_path, '<path fill="#000000" d="M0 0 L40 0 L40 6 L0 6 "/>', with_image=False)
+    exp = load_remarkable_export(svg)
+    assert exp.has_template is False
+    assert exp.page_raster.size == (100, 80)
+    assert len(exp.strokes) == 1

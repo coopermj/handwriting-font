@@ -6,6 +6,7 @@ import math
 import re
 import xml.etree.ElementTree as ET
 from collections import deque
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -254,3 +255,47 @@ def compose_raster(
         if len(stroke) >= 2:
             draw.line([(x, y) for x, y in stroke], fill=0, width=_INK_WIDTH)
     return base
+
+
+@dataclass
+class RemarkableExport:
+    """The page raster + centerline strokes extracted from a reMarkable SVG export."""
+
+    page_raster: Image.Image
+    strokes: list[list[tuple[float, float]]]
+    page_size: tuple[int, int]
+    viewbox_offset: tuple[float, float]
+    dropped_paths: int
+    has_template: bool
+
+
+def load_remarkable_export(svg_path: str | Path) -> RemarkableExport:
+    """Ingest a reMarkable SVG export into a page raster + per-stroke centerlines (page-px).
+
+    Raises ValueError if the export contains no ink paths.
+    """
+    viewbox, template_png, rings = parse_svg(svg_path)
+    if not rings:
+        raise ValueError(f"no ink paths found in {svg_path}")
+
+    minx, miny, w, h = viewbox
+    page_size = (round(w), round(h))
+
+    strokes: list[list[tuple[float, float]]] = []
+    dropped = 0
+    for ring in rings:
+        line = centerline(normalize(ring, viewbox))
+        if line is None:
+            dropped += 1
+        else:
+            strokes.append(line)
+
+    raster = compose_raster(template_png, strokes, page_size)
+    return RemarkableExport(
+        page_raster=raster,
+        strokes=strokes,
+        page_size=page_size,
+        viewbox_offset=(minx, miny),
+        dropped_paths=dropped,
+        has_template=template_png is not None,
+    )
