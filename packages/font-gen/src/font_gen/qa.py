@@ -210,10 +210,14 @@ def _ligature_labels(plan: GlyphPlan) -> dict[str, str]:
 
 
 def probe_letter(plan: GlyphPlan, components: tuple[str, ...]) -> str | None:
-    """First `PROBE_PREFERENCE` letter in the cmap whose neighbourhood with `components` extends no other ligature."""
+    """First `PROBE_PREFERENCE` letter in the cmap whose neighbourhood with `components` extends no other ligature.
+
+    Ruling R3: a label nested inside `label` itself (`fi` in `ffi`, `ng` in `ing`) does not disqualify a probe, since
+    it is present in every probe word; only a ligature the probe letter itself would complete does.
+    """
     by_name = plan.by_name()
     label = "".join(by_name[c].label for c in components)
-    others = {lab for lig, lab in _ligature_labels(plan).items() if lab != label}
+    others = {lab for lig, lab in _ligature_labels(plan).items() if lab != label and lab not in label}
     for probe in PROBE_PREFERENCE:
         if ord(probe) not in plan.cmap:
             continue

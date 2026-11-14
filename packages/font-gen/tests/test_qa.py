@@ -154,3 +154,18 @@ def test_word_cycle_mode_expects_the_counter_to_restart_at_every_word(fixture_pl
     word = shaping_expectations(fixture_plan, "word")
     assert any(e.mode == "ends_equal" and e.text == "a a" for e in word)
     assert not any(e.mode == "ends_distinct" for e in word)   # no @TRANSPARENT rules in --cycle-mode word
+
+
+def test_nested_ligature_labels_still_get_all_four_probe_rows(tmp_path):
+    # ruling R3: fi inside ffi and ng inside ing are not "other" ligatures for the probe, so every ligature is
+    # checked in each allowed and disallowed position on the built font (spec §11.5), not only in isolation
+    from conftest import LIGA_SPEC, stub_font_from_spec
+    font, plan = stub_font_from_spec(tmp_path, LIGA_SPEC)
+    exps = shaping_expectations(plan)
+    for lig, probe in (("f_f_i", "x"), ("i_n_g", "x"), ("s_t_r", "x")):
+        components, _ = plan.ligatures[lig]
+        label = "".join(components)
+        assert probe_letter(plan, components) == probe, lig
+        rows = {e.note.rsplit(" ", 1)[1]: e.text for e in exps if e.note.startswith(f"ligature {label} ")}
+        assert rows == {"init": label + probe, "medi": probe + label + probe, "fina": probe + label, "isol": label}, lig
+    assert [(e.text, check_expectation(font, e)) for e in exps if check_expectation(font, e)] == []
