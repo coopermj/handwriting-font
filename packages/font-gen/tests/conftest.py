@@ -81,3 +81,36 @@ def fixture_outlines(fixture_plan, fixture_samples):
             ls = fixture_samples[g.sample_id]
             out[g.name] = outline_from_strokes(ls.strokes, ls.sample.metrics, glyph=g.name).outline
     return out
+
+
+def build_stub_font(plan, fea_text: str) -> bytes:
+    """A CFF stub font with a box outline per glyph, used to compile and shape generated features."""
+    from io import BytesIO
+
+    from fontTools.fontBuilder import FontBuilder
+    from fontTools.pens.t2CharStringPen import T2CharStringPen
+
+    names = plan.names()
+    fb = FontBuilder(1000, isTTF=False)
+    fb.setupGlyphOrder(names)
+    fb.setupCharacterMap(plan.cmap)
+    charstrings = {}
+    for n in names:
+        pen = T2CharStringPen(500, None)
+        if n != "space":
+            pen.moveTo((50, 0))
+            pen.lineTo((450, 0))
+            pen.lineTo((450, 500))
+            pen.lineTo((50, 500))
+            pen.closePath()
+        charstrings[n] = pen.getCharString()
+    fb.setupCFF("Stub", {"FullName": "Stub", "FamilyName": "Stub"}, charstrings, {})
+    fb.setupHorizontalMetrics({n: (500, 50 if n != "space" else 0) for n in names})
+    fb.setupHorizontalHeader(ascent=800, descent=-200)
+    fb.setupNameTable({"familyName": "Stub", "styleName": "Regular"})
+    fb.setupOS2(version=4, sTypoAscender=800, sTypoDescender=-200, usWinAscent=800, usWinDescent=200, fsSelection=0xC0)
+    fb.setupPost()
+    fb.addOpenTypeFeatures(fea_text)
+    buf = BytesIO()
+    fb.save(buf)
+    return buf.getvalue()
