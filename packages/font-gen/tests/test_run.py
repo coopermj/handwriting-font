@@ -57,8 +57,9 @@ def test_build_on_e2e_store_reports_exact_codes_and_shapes(tmp_path, e2e_store, 
     assert capsys.readouterr().out.splitlines()[0].startswith(f"Wrote {out}: ")
     assert _codes(tmp_path / "Hand.qa.json") == {
         "bad_sample_excluded", "dot_rendered", "font_stats", "kind_mismatch", "ligature_overlap", "ligature_restricted",
-        "marginal_used", "nib_width_assumed", "outline_degenerate", "raster_fallback", "ring_short", "ring_singleton",
-        "space_advance_assumed", "stroke_degenerate", "target_below_required", "target_no_samples"}
+        "marginal_used", "nib_width_assumed", "outline_degenerate", "outline_tiny_contour", "raster_fallback", "ring_short",
+        "ring_singleton", "space_advance_assumed", "stroke_degenerate", "target_below_required", "target_no_samples"}
+    # outline_tiny_contour: the raster-only q's binarisation pinhole, kept and reported info per spec §7.5 step 6 / §7.6
     report = json.loads((tmp_path / "Hand.qa.json").read_text())
     assert report["em_convention_version"] == 1 and len(report["store_digest"]) == 64
     assert any(r["label"] == "b" and r["met"] and not r["met_eligible"] for r in report["coverage"])
