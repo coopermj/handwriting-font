@@ -45,6 +45,7 @@ def generate(
     force: bool = False,
     allow_unmet: bool = False,
     pages: int = DEFAULT_PAGES,
+    png: bool = False,
 ) -> PlanResult:
     if pages < 1:
         raise ValueError(f"pages must be >= 1, got {pages}")
@@ -83,6 +84,10 @@ def generate(
         (out_dir / "targets.json").write_text(
             json.dumps([t.model_dump(mode="json") for t in targets]), encoding="utf-8"
         )
+        if png:
+            from capture_template.raster import render_model_rasters
+
+            render_model_rasters(model, out_dir)
 
         unmet = [r.label for r in result.coverage if not r.met]
         genuine = sum(1 for line in result.lines if not line.is_drill)
@@ -115,6 +120,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", required=True, help="output directory")
     parser.add_argument("--force", action="store_true", help="overwrite an existing output dir")
     parser.add_argument("--allow-unmet", action="store_true", help="write the booklet even if some targets are unmet")
+    parser.add_argument("--png", action="store_true", help="also write page-<n>.png template rasters (for native .rm ingest / previews)")
     parser.add_argument(
         "--pages", type=_positive_int, default=DEFAULT_PAGES,
         help=f"target booklet length in pages (default: {DEFAULT_PAGES})",
@@ -129,6 +135,7 @@ def main(argv: list[str] | None = None) -> int:
             force=args.force,
             allow_unmet=args.allow_unmet,
             pages=args.pages,
+            png=args.png,
         )
     except UnmetCoverageError as e:
         print(e)

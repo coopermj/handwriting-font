@@ -10,14 +10,15 @@ requires-python = ">=3.12"
 dependencies = [
     "hwfont-schema",
     "anthropic>=0.40",
-    "pillow>=10.0",
+    "pillow>=10.1",
     "numpy>=1.26",
+    "scipy>=1.11",
     "scikit-image>=0.22",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.0"]
-svg-raster = ["cairosvg>=2.7"]
+dev = ["pytest>=8.0", "rmscene>=0.5", "capture-template"]
+rm = ["rmscene>=0.5"]
 
 [project.scripts]
 ingest-segment = "ingest_segment.run:main"

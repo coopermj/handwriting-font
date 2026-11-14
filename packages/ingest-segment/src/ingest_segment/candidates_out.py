@@ -8,24 +8,44 @@ from hwfont_schema import (
     CandidateProvenance,
     CandidateSet,
     Contour,
+    Outline,
     StrokeData,
     StrokePoint,
 )
+from ingest_segment.remarkable_svg import PenStroke
 
 
-def _strokes_to_data(strokes: list[list[tuple[float, float]]]) -> StrokeData | None:
-    contours = [
-        Contour(points=[StrokePoint(x=x, y=y) for x, y in pts])
-        for pts in strokes
-        if len(pts) >= 2
-    ]
-    return StrokeData(contours=contours) if contours else None
+def _strokes_to_data(strokes: list[PenStroke]) -> StrokeData | None:
+    """Serialize pen strokes: every centerline becomes a Contour (with width/pressure per
+    point); the original ink outlines ride along when the source had them."""
+    contours: list[Contour] = []
+    outlines: list[Outline] = []
+    for stroke in strokes:
+        pressures = stroke.pressures or [None] * len(stroke.centerlines)
+        for line, widths, press in zip(stroke.centerlines, stroke.widths, pressures):
+            if len(line) < 2:
+                continue
+            pts = [
+                StrokePoint(x=x, y=y, width=w, pressure=(press[i] if press is not None else None))
+                for i, ((x, y), w) in enumerate(zip(line, widths))
+            ]
+            contours.append(Contour(points=pts))
+        if stroke.outline:
+            outlines.append(
+                Outline(
+                    rings=[[StrokePoint(x=x, y=y) for x, y in ring] for ring in stroke.outline],
+                    fill_rule=stroke.fill_rule,  # type: ignore[arg-type]
+                )
+            )
+    if not contours:
+        return None
+    return StrokeData(contours=contours, outlines=outlines or None)
 
 
 def write_candidate_set(
     out_dir: str | Path,
     provenance: CandidateProvenance,
-    items: list[tuple[Candidate, list[list[tuple[float, float]]]]],
+    items: list[tuple[Candidate, list[PenStroke]]],
     crops: dict[str, bytes],
     force: bool = False,
 ) -> CandidateSet:

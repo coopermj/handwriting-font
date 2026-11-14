@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
+from PIL import Image
 
 from hwfont_schema import Fiducial, Page
+from ingest_segment.remarkable_svg import PenStroke
 
 # 2x3 affine: [[a, b, tx], [c, d, ty]] mapping (x, y, 1) -> (x', y')
 Affine = np.ndarray
@@ -35,6 +37,48 @@ def apply_affine(matrix: Affine, points: list[tuple[float, float]]) -> list[tupl
     pts = np.array([[x, y, 1.0] for x, y in points])
     out = pts @ matrix.T  # (n, 2)
     return [(float(x), float(y)) for x, y in out]
+
+
+def invert_affine(matrix: Affine) -> Affine:
+    """The 2x3 inverse of a 2x3 affine."""
+    full = np.vstack([matrix, [0.0, 0.0, 1.0]])
+    return np.linalg.inv(full)[:2]
+
+
+def affine_scale(matrix: Affine) -> float:
+    """Mean linear scale factor of an affine (sqrt of |det| of its 2x2 part)."""
+    return float(np.sqrt(abs(np.linalg.det(matrix[:, :2]))))
+
+
+def is_identity(matrix: Affine, tol: float = 1e-6) -> bool:
+    return bool(np.allclose(matrix, np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]), atol=tol))
+
+
+def transform_stroke(matrix: Affine, stroke: PenStroke) -> PenStroke:
+    """Map a stroke's centerlines and outline through an affine; widths scale with it."""
+    s = affine_scale(matrix)
+    return replace(
+        stroke,
+        centerlines=[apply_affine(matrix, line) for line in stroke.centerlines],
+        widths=[[w * s for w in ws] for ws in stroke.widths],
+        outline=[apply_affine(matrix, ring) for ring in stroke.outline],
+    )
+
+
+def warp_raster(raster: Image.Image, matrix: Affine, page_size: tuple[int, int]) -> Image.Image:
+    """Resample an export-space raster into page-pixel space via the export->page affine.
+
+    Region crops index the raster with sidecar (page-pixel) coordinates, so the raster
+    must live in that space too, not only the strokes. An identity affine on a raster
+    of the right size is returned unchanged (no resampling blur).
+    """
+    if is_identity(matrix) and raster.size == tuple(page_size):
+        return raster
+    inv = invert_affine(matrix)  # PIL wants output px -> input px
+    (a, b, c), (d, e, f) = inv
+    return raster.transform(
+        tuple(page_size), Image.AFFINE, data=(a, b, c, d, e, f), resample=Image.BILINEAR, fillcolor=255
+    )
 
 
 def residual(
