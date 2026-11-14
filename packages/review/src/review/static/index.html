@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>review</title>
+<style>
+  :root {
+    --bg: #f4f3f0;
+    --surface: #ffffff;
+    --line: #dddad3;
+    --text: #23221f;
+    --muted: #77736b;
+    --accent: #2f6fdb;
+    --pending: #8a8780;
+    --accepted: #1f9d55;
+    --rejected: #d64545;
+    --error: #b42318;
+    --radius: 6px;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text); font: 13px/1.45 var(--font);
+    display: grid; grid-template-rows: auto 1fr; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; gap: 16px; padding: 8px 16px;
+    background: var(--surface); border-bottom: 1px solid var(--line);
+  }
+  header .sid { font-weight: 600; }
+  header .stats { color: var(--muted); font-variant-numeric: tabular-nums; }
+  header .progress { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+  header select { font: inherit; }
+  main { display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
+  #canvas-wrap { overflow: auto; padding: 16px; min-width: 0; }
+  #page {
+    display: block; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.12);
+    border-radius: 2px;
+  }
+  aside {
+    display: flex; flex-direction: column; min-height: 0;
+    background: var(--surface); border-left: 1px solid var(--line);
+  }
+  section { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  h2 {
+    margin: 0 0 8px; font-size: 11px; font-weight: 600; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .crop {
+    height: 112px; display: flex; align-items: center; justify-content: center;
+    background: #fff; border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 10px;
+  }
+  .crop img { max-width: 100%; max-height: 104px; image-rendering: auto; }
+  .crop .none { color: var(--muted); }
+  dl { display: grid; grid-template-columns: 84px 1fr; gap: 3px 8px; margin: 0 0 10px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; overflow-wrap: anywhere; }
+  .mono { font-family: var(--mono); font-size: 12px; }
+  .badge {
+    display: inline-block; padding: 0 6px; border-radius: 9px; font-size: 11px; line-height: 18px;
+    border: 1px solid currentColor;
+  }
+  .st-pending { color: var(--pending); }
+  .st-accepted { color: var(--accepted); }
+  .st-rejected { color: var(--rejected); }
+  .st-needs_review { color: var(--accent); border-style: dashed; }
+  .ctx .word { font-weight: 600; }
+  .ctx .nb { color: var(--muted); }
+  label.field { display: block; margin-bottom: 10px; }
+  label.field span { display: block; color: var(--muted); margin-bottom: 3px; }
+  input[type=text] {
+    width: 100%; font: 15px var(--mono); padding: 5px 8px;
+    border: 1px solid var(--line); border-radius: var(--radius); background: var(--bg);
+  }
+  input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: -1px; background: #fff; }
+  fieldset { border: 0; padding: 0; margin: 0 0 10px; display: flex; gap: 14px; }
+  fieldset legend { color: var(--muted); padding: 0; margin-bottom: 3px; float: left; width: 100%; }
+  fieldset label { display: inline-flex; gap: 4px; align-items: center; }
+  .flags { margin: 0 0 10px; padding: 0; list-style: none; }
+  .flags li { font-family: var(--mono); font-size: 12px; color: var(--rejected); }
+  .flags li.none { color: var(--muted); font-family: var(--font); }
+  .buttons { display: flex; gap: 8px; }
+  button {
+    flex: 1; font: inherit; padding: 6px 8px; border-radius: var(--radius); cursor: pointer;
+    border: 1px solid var(--line); background: var(--surface); color: var(--text);
+  }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  kbd {
+    font: 11px var(--mono); padding: 0 4px; border: 1px solid var(--line);
+    border-bottom-width: 2px; border-radius: 3px; color: var(--muted);
+  }
+  button.primary kbd { color: #fff; border-color: rgba(255,255,255,.5); }
+  #status { min-height: 18px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+  #status.error { color: var(--error); }
+  .keys { color: var(--muted); font-size: 11px; margin-top: 6px; }
+  #coverage { flex: 1; overflow: auto; border-bottom: 0; }
+  #coverage ul { list-style: none; margin: 0; padding: 0; font-family: var(--mono); font-size: 12px; }
+  #coverage li { display: flex; justify-content: space-between; padding: 1px 0; }
+  #coverage li .pend { color: var(--muted); }
+  #coverage li.met { color: var(--muted); opacity: .6; }
+  #coverage li.met .ok { color: var(--accepted); }
+  #coverage .untargeted { margin-top: 8px; color: var(--muted); font-size: 12px; }
+  .empty { color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <span class="sid" id="sid">review</span>
+  <span class="stats" id="stats"></span>
+  <select id="page-select" hidden aria-label="page"></select>
+  <span class="progress" id="progress"></span>
+</header>
+<main>
+  <div id="canvas-wrap"><canvas id="page" aria-label="page with candidate boxes"></canvas></div>
+  <aside>
+    <section id="panel">
+      <h2>Candidate</h2>
+      <div class="crop" id="crop"><span class="none">—</span></div>
+      <dl>
+        <dt>id</dt><dd class="mono" id="c-id">—</dd>
+        <dt>confidence</dt><dd id="c-conf">—</dd>
+        <dt>ingest</dt><dd id="c-ingest">—</dd>
+        <dt>decision</dt><dd id="c-status">—</dd>
+        <dt>context</dt><dd class="ctx" id="c-ctx">—</dd>
+      </dl>
+      <label class="field"><span>label <kbd>e</kbd></span>
+        <input type="text" id="label" autocomplete="off" spellcheck="false"></label>
+      <fieldset id="quality">
+        <legend>quality</legend>
+        <label><input type="radio" name="quality" value="good"> good <kbd>g</kbd></label>
+        <label><input type="radio" name="quality" value="marginal"> marginal <kbd>m</kbd></label>
+        <label><input type="radio" name="quality" value="bad"> bad <kbd>b</kbd></label>
+      </fieldset>
+      <ul class="flags" id="flags"></ul>
+      <div class="buttons">
+        <button class="primary" id="btn-accept">Accept <kbd>a</kbd></button>
+        <button id="btn-reject">Reject <kbd>r</kbd></button>
+        <button id="btn-reset">Reset <kbd>x</kbd></button>
+      </div>
+      <div id="status" role="status" aria-live="polite"></div>
+      <div class="keys"><kbd>j</kbd>/<kbd>k</kbd> next / previous · drag the box or its handles to adjust</div>
+    </section>
+    <section id="coverage">
+      <h2 id="cov-title">Coverage</h2>
+      <ul id="cov-list"></ul>
+      <div class="untargeted" id="cov-untargeted"></div>
+    </section>
+  </aside>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>
