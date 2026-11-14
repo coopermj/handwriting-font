@@ -40,3 +40,10 @@ def _id_of(inputs: ReviewInputs, label: str, region: int) -> str:
     if not matches:
         raise KeyError(f"no candidate labelled {label!r} in region {region}")
     return min(matches, key=lambda c: c.bbox.x).id
+
+
+@pytest.fixture
+def log(inputs):
+    from review.decisions import default_log
+
+    return default_log(inputs, NOW)
