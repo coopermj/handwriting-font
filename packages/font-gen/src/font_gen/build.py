@@ -10,7 +10,10 @@ from io import BytesIO
 from fontTools.fontBuilder import FontBuilder
 from fontTools.misc.psCharStrings import T2CharString
 from fontTools.misc.timeTools import timestampSinceEpoch
+from fontTools.pens.cu2quPen import Cu2QuPen
 from fontTools.pens.t2CharStringPen import T2CharStringPen
+from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.ttLib.tables._g_l_y_f import Glyph
 
 from font_gen.metrics import VMetrics
 from font_gen.nib import UPM
@@ -120,6 +123,54 @@ def build_font(
     os2.recalcCodePageRanges(fb.font)
     fb.setupPost()
     fb.setupHead(created=ts, modified=ts)
+    fb.addOpenTypeFeatures(fea_text)
+    buf = BytesIO()
+    fb.save(buf)
+    return buf.getvalue()
+
+
+def tt_glyphs(plan: GlyphPlan, outlines: dict[str, Outline]) -> dict[str, Glyph]:
+    """One glyf-table Glyph per name: cubics → quadratics (max_err 1.0), outer contours reversed to clockwise."""
+    out: dict[str, Glyph] = {}
+    for name in plan.names():
+        outline = outlines[name]
+        pen = TTGlyphPen(None)
+        outline.draw(Cu2QuPen(pen, max_err=1.0, reverse_direction=True))  # no contours: draws nothing, empty glyph
+        glyph = pen.glyph()
+        glyph.recalcBounds(None)  # TTGlyphPen.glyph() leaves xMin unset; FontBuilder computes bounds only in setupGlyf
+        out[name] = glyph
+    return out
+
+
+def build_ttf(
+    plan: GlyphPlan,
+    outlines: dict[str, Outline],
+    hmetrics: dict[str, tuple[int, int]],
+    vmetrics: VMetrics,
+    fea_text: str,
+    meta: BuildMeta,
+) -> bytes:
+    """TrueType (glyf) .ttf bytes with the same features and metrics; deterministic like build_font."""
+    ts = head_timestamp(meta.created_at)
+    names = plan.names()
+    glyphs = tt_glyphs(plan, outlines)
+    fb = FontBuilder(UPM, isTTF=True)
+    fb.setupGlyphOrder(names)
+    fb.setupCharacterMap(plan.cmap)
+    fb.setupGlyf(glyphs)
+    fb.setupHorizontalMetrics(
+        {name: (hmetrics[name][0], glyphs[name].xMin if glyphs[name].numberOfContours else 0) for name in names}
+    )
+    fb.setupHorizontalHeader(ascent=vmetrics.ascender, descent=vmetrics.descender)
+    fb.setupNameTable(name_records(meta))
+    fb.setupOS2(**os2_values(vmetrics))
+    os2 = fb.font["OS/2"]
+    os2.recalcAvgCharWidth(fb.font)
+    os2.recalcUnicodeRanges(fb.font)
+    os2.recalcCodePageRanges(fb.font)
+    fb.setupPost()
+    fb.setupHead(created=ts, modified=ts)
+    fb.setupMaxp()
     fb.addOpenTypeFeatures(fea_text)
     buf = BytesIO()
     fb.save(buf)

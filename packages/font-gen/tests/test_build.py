@@ -2,11 +2,12 @@ import io
 import math
 
 from fontTools.misc.timeTools import timestampSinceEpoch
+from fontTools.pens.areaPen import AreaPen
 from fontTools.pens.boundsPen import BoundsPen
 from fontTools.pens.recordingPen import RecordingPen
 from fontTools.ttLib import TTFont
 
-from font_gen.build import BuildMeta, build_font, head_timestamp
+from font_gen.build import BuildMeta, build_font, build_ttf, head_timestamp
 from font_gen.outline import Outline
 from font_gen.qa import shape_names
 
@@ -86,3 +87,21 @@ def test_empty_outline_glyph_survives_build(fixture_plan, fixture_outlines, fixt
     bp = BoundsPen(tt.getGlyphSet())
     tt.getGlyphSet()["a.alt1"].draw(bp)
     assert bp.bounds is None
+
+
+def test_ttf_has_glyf_clockwise_outers_post_2_and_shapes_identically(fixture_otf, fixture_plan, fixture_outlines, fixture_hm, fixture_vm, fixture_fea, fixture_meta):
+    ttf = build_ttf(fixture_plan, fixture_outlines, fixture_hm, fixture_vm, fixture_fea, fixture_meta)
+    tt = _tt(ttf)
+    assert "glyf" in tt and "CFF " not in tt and tt["post"].formatType == 2.0
+    assert tt.getGlyphOrder() == fixture_plan.names() and tt["maxp"].numGlyphs == len(fixture_plan.names())
+    gs = tt.getGlyphSet()
+    ap = AreaPen(gs)
+    gs["a"].draw(ap)
+    assert ap.value < 0                                    # clockwise outer for TrueType
+    for name, (adv, _) in fixture_hm.items():
+        assert tt["hmtx"][name][0] == adv
+        assert tt["hmtx"][name][1] == (tt["glyf"][name].xMin if tt["glyf"][name].numberOfContours else 0)
+    assert tt["head"].created == _tt(fixture_otf)["head"].created
+    for text in ("the the the", "fi", "aaaaaaaa", "nation"):
+        assert shape_names(ttf, text) == shape_names(fixture_otf, text)
+    assert build_ttf(fixture_plan, fixture_outlines, fixture_hm, fixture_vm, fixture_fea, fixture_meta) == ttf
