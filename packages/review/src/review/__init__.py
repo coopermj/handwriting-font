@@ -36,6 +36,7 @@ from review.ink import (
     strokes_to_polylines,
 )
 from review.inputs import PageInputs, ReviewInputs, load_inputs
+from review.normalize import ADVANCE_CLAMP, Materialised, materialise, sample_id
 from review.session import (
     HALF_GAP_DEFAULT,
     XH_LETTERS,
@@ -54,6 +55,7 @@ from review.session import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "ADVANCE_CLAMP",
     "HALF_GAP_DEFAULT",
     "INK_THRESHOLD",
     "INSIDE_FRACTION",
@@ -65,6 +67,7 @@ __all__ = [
     "Decision",
     "DecisionStatus",
     "Extent",
+    "Materialised",
     "PageInputs",
     "Polyline",
     "ReviewError",
@@ -88,6 +91,7 @@ __all__ = [
     "ink_mask",
     "load_inputs",
     "load_log",
+    "materialise",
     "neighbours",
     "polylines_to_strokes",
     "region_pool",
@@ -95,6 +99,7 @@ __all__ = [
     "relabel",
     "resample_raster",
     "reset",
+    "sample_id",
     "save_log",
     "scale",
     "set_quality",
