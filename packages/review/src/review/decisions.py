@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 from enum import Enum
 from pathlib import Path
@@ -35,10 +36,23 @@ class Decision(BaseModel):
     updated_at: str
 
 
+class SessionStatsRecord(BaseModel):
+    """`session.SessionStats` frozen into the log at the first review of a session (spec ruling 3)."""
+
+    x_height: float
+    median_half_gap: float
+    n_x_height_letters: int
+    n_gaps: int
+    flags: list[str] = Field(default_factory=list)
+    page_ids: list[str] = Field(default_factory=list)
+
+
 class ReviewLog(BaseModel):
     version: str = "1"
     session_id: str
     decisions: dict[str, Decision]
+    stats: SessionStatsRecord | None = None
+    manifest_sha256: str | None = None
 
 
 def default_decision(candidate: Candidate, now: str) -> Decision:
@@ -127,6 +141,18 @@ def reset(log: ReviewLog, inputs: ReviewInputs, candidate_id: str, now: str) -> 
     return new
 
 
+MANIFEST_NAME = "candidates.json"
+
+
+def manifest_digest(candidate_dir: Path) -> str:
+    """sha256 (hex) of the directory's `candidates.json`."""
+    path = Path(candidate_dir) / MANIFEST_NAME
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError as exc:
+        raise ReviewError(f"cannot read candidate manifest {path}: {exc}") from exc
+
+
 def load_log(candidate_dir: Path, inputs: ReviewInputs, now: str) -> ReviewLog:
     candidate_dir = Path(candidate_dir)
     page = next((pg for pg in inputs.pages.values() if pg.candidate_dir == candidate_dir), None)
@@ -146,6 +172,11 @@ def load_log(candidate_dir: Path, inputs: ReviewInputs, now: str) -> ReviewLog:
         raise ReviewError(
             f"review log {path} belongs to session {log.session_id!r}, not {inputs.session_id!r}"
         )
+    if log.manifest_sha256 is not None and log.manifest_sha256 != manifest_digest(candidate_dir):
+        raise ReviewError(
+            f"{candidate_dir / MANIFEST_NAME}: candidates.json changed since review.json was written — "
+            "re-ingest without --force or delete review.json"
+        )
     for cid in log.decisions:
         if cid not in page.candidates:
             raise ReviewError(f"review log {path} has a decision for unknown candidate {cid!r}")
@@ -155,8 +186,11 @@ def load_log(candidate_dir: Path, inputs: ReviewInputs, now: str) -> ReviewLog:
     return log
 
 
-def save_log(candidate_dir: Path, log: ReviewLog) -> None:
+def save_log(candidate_dir: Path, log: ReviewLog) -> ReviewLog:
+    """Atomically write `log` with the current `candidates.json` digest; returns the log as written."""
+    log = log.model_copy(update={"manifest_sha256": manifest_digest(candidate_dir)})
     path = Path(candidate_dir) / LOG_NAME
     tmp = path.with_name(LOG_NAME + ".tmp")
     tmp.write_text(log.model_dump_json(indent=2), encoding="utf-8")
     os.replace(tmp, path)
+    return log

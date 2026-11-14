@@ -117,3 +117,16 @@ def test_index_and_static(client):
     js = client.get("/static/app.js")
     assert js.status_code == 200
     assert js.headers["content-type"].split(";")[0] in ("text/javascript", "application/javascript")
+
+
+def test_session_json_carries_inconsistencies(tmp_path, synth):  # I5
+    store_root = tmp_path / "store"
+    assert main(["init", "--store", str(store_root), "--sidecar", str(synth.sidecar_path)]) == 0
+    s = open_session(store_root, synth.sidecar_path, [synth.candidate_dir], {"p0": synth.raster_path}, None, NOW)
+    try:
+        assert TestClient(create_app(s, lambda: NOW)).get("/api/session").json()["inconsistencies"] == []
+        s.inconsistencies = ["x is accepted but sample capture-x is missing from the store"]
+        j = TestClient(create_app(s, lambda: NOW)).get("/api/session").json()
+        assert j["inconsistencies"] == s.inconsistencies
+    finally:
+        s.close()

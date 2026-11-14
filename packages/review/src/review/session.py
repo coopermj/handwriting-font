@@ -13,6 +13,7 @@ from dataclasses import dataclass
 import numpy as np
 from hwfont_schema import Context, PositionInWord, Region
 
+from review.decisions import SessionStatsRecord
 from review.ink import candidate_extent, strokes_to_polylines
 from review.inputs import PageInputs, ReviewInputs
 
@@ -29,6 +30,26 @@ class SessionStats:
     n_x_height_letters: int
     n_gaps: int
     flags: tuple[str, ...]
+
+    def to_record(self, page_ids: list[str]) -> SessionStatsRecord:
+        return SessionStatsRecord(
+            x_height=self.x_height,
+            median_half_gap=self.median_half_gap,
+            n_x_height_letters=self.n_x_height_letters,
+            n_gaps=self.n_gaps,
+            flags=list(self.flags),
+            page_ids=list(page_ids),
+        )
+
+    @classmethod
+    def from_record(cls, record: SessionStatsRecord) -> SessionStats:
+        return cls(
+            x_height=record.x_height,
+            median_half_gap=record.median_half_gap,
+            n_x_height_letters=record.n_x_height_letters,
+            n_gaps=record.n_gaps,
+            flags=tuple(record.flags),
+        )
 
 
 def scale(region: Region) -> float:

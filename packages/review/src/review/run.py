@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from hwfont_schema import BBox, CaptureSidecar, GlyphStore, Quality, Target
 from review.coverage import format_report, report
 from review.decisions import (
     Decision,
+    DecisionStatus,
     ReviewLog,
     accept,
     adjust_box,
@@ -30,6 +32,7 @@ from review.decisions import (
 )
 from review.errors import ReviewError
 from review.inputs import ReviewInputs, load_inputs
+from review.normalize import sample_id
 from review.session import SessionStats, compute_stats
 from review.store_sync import apply as sync_apply
 from review.store_sync import replay as sync_replay
@@ -49,6 +52,7 @@ class Session:
     inputs: ReviewInputs
     stats: SessionStats
     logs: dict[Path, ReviewLog]
+    inconsistencies: list[str] = field(default_factory=list)
 
     def dir_of(self, candidate_id: str) -> Path:
         """The candidate directory whose page holds `candidate_id` (`ReviewError` if unknown)."""
@@ -68,6 +72,35 @@ class Session:
         self.store.close()
 
 
+def _frozen_stats(inputs: ReviewInputs, logs: dict[Path, ReviewLog], restats: bool) -> tuple[SessionStats, bool]:
+    """The session statistics frozen in the logs (spec ruling 3, amendment I4); computed when no log carries
+    them or `restats`. Returns `(stats, changed)` where `changed` means some log must be rewritten."""
+    records = [log.stats for log in logs.values() if log.stats is not None]
+    if records and not restats:
+        if any(r != records[0] for r in records[1:]):
+            raise ReviewError(
+                "the review logs carry different session statistics; run `review replay --restats` "
+                "to recompute them from the loaded pages"
+            )
+        return SessionStats.from_record(records[0]), len(records) != len(logs)
+    return compute_stats(inputs), True
+
+
+def _inconsistencies(store: GlyphStore, inputs: ReviewInputs, logs: dict[Path, ReviewLog]) -> list[str]:
+    """Decisions the store does not mirror: accepted without a sample, or not accepted with one."""
+    out: list[str] = []
+    for log in logs.values():
+        for cid in sorted(log.decisions):
+            d = log.decisions[cid]
+            sid = sample_id(inputs.session_id, cid)
+            present = store.get_sample(sid) is not None
+            if d.status is DecisionStatus.accepted and not present:
+                out.append(f"{cid} is accepted but sample {sid} is missing from the store")
+            elif d.status is not DecisionStatus.accepted and present:
+                out.append(f"{cid} is {d.status.value} but sample {sid} is in the store")
+    return out
+
+
 def open_session(
     store_root: Path,
     sidecar: Path,
@@ -75,14 +108,31 @@ def open_session(
     rasters: Mapping[str, Path] | None,
     session_id: str | None,
     now: str,
+    *,
+    restats: bool = False,
 ) -> Session:
-    """Open an initialised store and load inputs, stats and one decision log per candidate directory."""
+    """Open an initialised store and load inputs, stats and one decision log per candidate directory.
+
+    Session statistics are frozen in the logs: the first open computes them and stores them into every
+    loaded log; later opens reuse them (all logs carrying stats must agree). `restats=True` recomputes them
+    from the loaded pages and rewrites every log (the caller replays). `Session.inconsistencies` lists every
+    decision the store does not mirror.
+    """
     dirs = [Path(d) for d in candidate_dirs]
     inputs = load_inputs(Path(sidecar), dirs, rasters, session_id)
-    stats = compute_stats(inputs)
     logs = {d: load_log(d, inputs, now) for d in dirs}
+    stats, changed = _frozen_stats(inputs, logs, restats)
     store = GlyphStore.open(store_root)
-    return Session(store=store, inputs=inputs, stats=stats, logs=logs)
+    try:
+        if changed:
+            record = stats.to_record(list(inputs.pages))
+            for d in dirs:
+                logs[d] = save_log(d, logs[d].model_copy(update={"stats": record}))
+        problems = _inconsistencies(store, inputs, logs)
+    except BaseException:
+        store.close()
+        raise
+    return Session(store=store, inputs=inputs, stats=stats, logs=logs, inconsistencies=problems)
 
 
 # ---------- argument parsing ----------
@@ -130,11 +180,16 @@ def _now(args: argparse.Namespace) -> str:
     return args.now or datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _open(args: argparse.Namespace) -> Session:
-    return open_session(
+def _open(args: argparse.Namespace, *, restats: bool = False, warn: bool = True) -> Session:
+    session = open_session(
         Path(args.store), Path(args.sidecar), [Path(d) for d in args.candidates],
-        _parse_rasters(args.raster), args.session, _now(args),
+        _parse_rasters(args.raster), args.session, _now(args), restats=restats,
     )
+    if warn and session.inconsistencies:
+        for line in session.inconsistencies:
+            print(f"warning: {line}", file=sys.stderr)
+        print("warning: run `review replay` to make the store mirror the review logs", file=sys.stderr)
+    return session
 
 
 def _fmt(x: float) -> str:
@@ -228,11 +283,14 @@ def apply_command(args: argparse.Namespace) -> int:
 
 
 def replay_command(args: argparse.Namespace) -> int:
-    session = _open(args)
+    session = _open(args, restats=args.restats, warn=False)
     try:
+        if args.restats:
+            st = session.stats
+            print(f"recomputed session statistics: x-height {st.x_height:.4f} em, "
+                  f"half-gap {st.median_half_gap:.4f} em")
         for d, log in session.logs.items():
-            new_log = sync_replay(session.store, session.inputs, session.stats, log)
-            save_log(d, new_log)
+            new_log = save_log(d, sync_replay(session.store, session.inputs, session.stats, log))
             session.logs[d] = new_log
             print(f"replayed {len(new_log.decisions)} decisions from {d}")
     finally:
@@ -300,6 +358,8 @@ def _parser() -> argparse.ArgumentParser:
 
     p = base("replay", "rebuild the store's samples from every review.json")
     session_opts(p)
+    p.add_argument("--restats", action="store_true",
+                   help="recompute the session statistics frozen in the review logs, then replay")
     p.set_defaults(func=replay_command)
 
     p = base("coverage", "print the coverage report")
@@ -319,5 +379,5 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.func(args)
     except (ReviewError, OSError, ValueError) as exc:
-        print(f"error: {exc}")
+        print(f"error: {exc}", file=sys.stderr)
         return 1

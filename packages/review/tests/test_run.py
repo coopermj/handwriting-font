@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+import pytest
 from conftest import NOW, _id_of
 from hwfont_schema import GlyphStore, Quality
 
@@ -133,3 +134,130 @@ def test_open_session_routes_to_directory(tmp_path, synth):
         assert h in sess.log_for(h).decisions
     finally:
         sess.close()
+
+
+# ---------- frozen session statistics (I4), manifest digest and consistency check (I5)
+
+
+def _log_json(synth_dir) -> dict:
+    return json.loads((synth_dir / LOG_NAME).read_text())
+
+
+def _write_log_json(synth_dir, data: dict) -> None:
+    (synth_dir / LOG_NAME).write_text(json.dumps(data))
+
+
+def test_stats_frozen_at_first_open_and_restats(tmp_path, synth, capsys):
+    from review.session import compute_stats
+
+    assert _init(tmp_path, synth) == 0
+    inputs = load_inputs(synth.sidecar_path, [synth.candidate_dir], {"p0": synth.raster_path})
+    computed = compute_stats(inputs)
+    sess = open_session(tmp_path / "store", synth.sidecar_path, [synth.candidate_dir], {"p0": synth.raster_path}, None, NOW)
+    sess.close()
+    data = _log_json(synth.candidate_dir)
+    assert data["stats"] == computed.to_record(["p0"]).model_dump(mode="json")
+    assert data["stats"]["page_ids"] == ["p0"]
+
+    data["stats"]["x_height"] = 0.5  # frozen: later opens reuse the logged value, not a recomputation
+    _write_log_json(synth.candidate_dir, data)
+    sess = open_session(tmp_path / "store", synth.sidecar_path, [synth.candidate_dir], {"p0": synth.raster_path}, None, NOW)
+    try:
+        assert sess.stats.x_height == 0.5 and sess.stats.median_half_gap == computed.median_half_gap
+    finally:
+        sess.close()
+    h = _id_of(inputs, "h", region=0)
+    assert main(["apply", *_common(tmp_path, synth), "--now", NOW, "--accept", h]) == 0
+    s = GlyphStore.open(tmp_path / "store")
+    try:
+        assert s.all_samples()[0].metrics.x_height == 0.5
+    finally:
+        s.close()
+
+    capsys.readouterr()
+    assert main(["replay", *_common(tmp_path, synth), "--now", NOW, "--restats"]) == 0
+    assert "recomputed session statistics" in capsys.readouterr().out
+    assert _log_json(synth.candidate_dir)["stats"]["x_height"] == computed.x_height
+    s = GlyphStore.open(tmp_path / "store")
+    try:
+        assert s.all_samples()[0].metrics.x_height == computed.x_height
+    finally:
+        s.close()
+
+
+def _two_pages(tmp_path):
+    from hwfont_schema import CaptureSidecar
+    from synth_page import synth_page
+
+    a = synth_page(tmp_path / "a", ["the cat sat"], page_id="p0")
+    b = synth_page(tmp_path / "b", ["a fat hen"], page_id="p1")
+    sidecar = tmp_path / "two.sidecar.json"
+    sidecar.write_text(CaptureSidecar(pages=[a.page, b.page]).model_dump_json())
+    return sidecar, a, b
+
+
+def test_stats_disagreeing_across_logs_need_restats(tmp_path, capsys):
+    from review.errors import ReviewError
+
+    sidecar, a, b = _two_pages(tmp_path)
+    assert main(["init", "--store", str(tmp_path / "store"), "--sidecar", str(sidecar)]) == 0
+    dirs = [a.candidate_dir, b.candidate_dir]
+    open_session(tmp_path / "store", sidecar, dirs, None, None, NOW).close()
+    ra, rb = _log_json(a.candidate_dir)["stats"], _log_json(b.candidate_dir)["stats"]
+    assert ra == rb and ra["page_ids"] == ["p0", "p1"]
+    data = _log_json(b.candidate_dir)
+    data["stats"]["median_half_gap"] = 0.07
+    _write_log_json(b.candidate_dir, data)
+    with pytest.raises(ReviewError, match=r"review replay --restats"):
+        open_session(tmp_path / "store", sidecar, dirs, None, None, NOW)
+    common = ["--store", str(tmp_path / "store"), "--sidecar", str(sidecar),
+              "--candidates", str(a.candidate_dir), "--candidates", str(b.candidate_dir)]
+    assert main(["coverage", *common]) == 1
+    assert "review replay --restats" in capsys.readouterr().err
+    assert main(["replay", *common, "--restats"]) == 0
+    assert _log_json(a.candidate_dir)["stats"] == _log_json(b.candidate_dir)["stats"] == ra
+
+
+def test_changed_manifest_is_refused(tmp_path, synth):
+    from review.errors import ReviewError
+
+    assert _init(tmp_path, synth) == 0
+    open_session(tmp_path / "store", synth.sidecar_path, [synth.candidate_dir], None, None, NOW).close()
+    assert len(_log_json(synth.candidate_dir)["manifest_sha256"]) == 64
+    manifest = synth.candidate_dir / "candidates.json"
+    manifest.write_text(manifest.read_text() + "\n")
+    with pytest.raises(ReviewError, match="candidates.json changed since review.json was written"):
+        open_session(tmp_path / "store", synth.sidecar_path, [synth.candidate_dir], None, None, NOW)
+
+
+def test_inconsistencies_reported_and_cleared_by_replay(tmp_path, synth, capsys):
+    from review.normalize import sample_id
+
+    assert _init(tmp_path, synth) == 0
+    inputs = load_inputs(synth.sidecar_path, [synth.candidate_dir], {"p0": synth.raster_path})
+    h, c = _id_of(inputs, "h", region=0), _id_of(inputs, "c", region=0)
+    assert main(["apply", *_common(tmp_path, synth), "--now", NOW, "--accept", h, "--accept", c]) == 0
+    s = GlyphStore.open(tmp_path / "store")
+    try:
+        s.remove_sample(sample_id("capture", h))  # store edited behind review's back
+    finally:
+        s.close()
+    data = _log_json(synth.candidate_dir)
+    data["decisions"][c]["status"] = "rejected"  # log edited behind the store's back
+    _write_log_json(synth.candidate_dir, data)
+    sess = open_session(tmp_path / "store", synth.sidecar_path, [synth.candidate_dir], {"p0": synth.raster_path}, None, NOW)
+    try:
+        assert sess.inconsistencies == sorted([
+            f"{h} is accepted but sample capture-{h} is missing from the store",
+            f"{c} is rejected but sample capture-{c} is in the store",
+        ])
+    finally:
+        sess.close()
+    capsys.readouterr()
+    assert main(["coverage", *_common(tmp_path, synth)]) == 0
+    err = capsys.readouterr().err
+    assert f"warning: {h} is accepted" in err and "run `review replay`" in err
+    assert main(["replay", *_common(tmp_path, synth), "--now", NOW]) == 0
+    capsys.readouterr()
+    assert main(["coverage", *_common(tmp_path, synth)]) == 0
+    assert "warning" not in capsys.readouterr().err

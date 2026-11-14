@@ -84,6 +84,7 @@ def _session_json(session: Session) -> dict:
     return {
         "session_id": session.inputs.session_id,
         "stats": {"x_height": st.x_height, "median_half_gap": st.median_half_gap, "flags": list(st.flags)},
+        "inconsistencies": list(session.inconsistencies),
         "pages": pages,
     }
 

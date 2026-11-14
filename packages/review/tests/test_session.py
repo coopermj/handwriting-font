@@ -99,3 +99,11 @@ def test_effective_context_falls_back_when_labels_do_not_spell_transcript(tmp_pa
     pg2 = dataclasses.replace(pg, candidates={**pg.candidates, ids[2]: wrong})
     for cid in ids:
         assert effective_context(pg2, r0, cid) == pg2.candidates[cid].context
+
+
+def test_stats_record_round_trip(inputs):  # I4
+    stats = compute_stats(inputs)
+    rec = stats.to_record(["p0"])
+    assert rec.page_ids == ["p0"] and rec.flags == list(stats.flags)
+    assert SessionStats.from_record(rec) == stats
+    assert type(rec).model_validate_json(rec.model_dump_json()) == rec

@@ -87,7 +87,7 @@ def apply(
     d = mirror(store, inputs, stats, new_log, candidate_id)
     new_log = new_log.model_copy(deep=True)
     new_log.decisions[candidate_id] = d
-    save_log(candidate_dir, new_log)
+    new_log = save_log(candidate_dir, new_log)
     return new_log, d
 
 

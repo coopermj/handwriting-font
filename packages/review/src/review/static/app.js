@@ -68,6 +68,9 @@
     let stats = `x-height ${s.stats.x_height.toFixed(2)} em · half-gap ${s.stats.median_half_gap.toFixed(2)} em`;
     if (s.stats.flags.length) stats += ` · ${s.stats.flags.join(", ")}`;
     $("stats").textContent = stats;
+    if (s.inconsistencies && s.inconsistencies.length) {
+      setStatus(`warning: ${s.inconsistencies.join("; ")} · run \`review replay\``, true);
+    }
 
     const sel = $("page-select");
     sel.innerHTML = "";
