@@ -118,3 +118,52 @@ def test_coverage_does_not_cross_count_single_and_ligature_with_same_label(tmp_p
     store.close()
     assert coverage[("x", "single")].met is True
     assert coverage[("x", "ligature")].met is False
+
+
+def test_all_samples_lists_every_sample_ordered_by_label_then_id(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    store.add_sample(_sample("s2", "b"))
+    store.add_sample(_sample("s3", "a"))
+    store.add_sample(_sample("s1", "a"))
+    ids = [s.id for s in store.all_samples()]
+    store.close()
+
+    assert ids == ["s1", "s3", "s2"]
+
+
+def test_all_samples_filters_by_review_status(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    store.add_sample(_sample("s1", "a"))
+    rejected = _sample("s2", "a").model_copy(update={"review_status": ReviewStatus.rejected})
+    store.add_sample(rejected)
+    accepted_ids = [s.id for s in store.all_samples(status=ReviewStatus.accepted)]
+    all_ids = [s.id for s in store.all_samples()]
+    store.close()
+
+    assert accepted_ids == ["s1"]
+    assert all_ids == ["s1", "s2"]
+
+
+def test_targets_round_trip_in_label_order(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    store.add_target(Target(label="eft", kind=Kind.ligature, required_count=3))
+    store.add_target(Target(label="a", kind=Kind.single, required_count=2))
+    targets = store.targets()
+    store.close()
+
+    assert targets == [
+        Target(label="a", kind=Kind.single, required_count=2),
+        Target(label="eft", kind=Kind.ligature, required_count=3),
+    ]
+
+
+def test_load_strokes_reads_sidecar_or_returns_none(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    with_ink = store.add_sample(_sample("s1", "a"), strokes=_strokes())
+    without_ink = store.add_sample(_sample("s2", "a"))
+    loaded = store.load_strokes(with_ink)
+    missing = store.load_strokes(without_ink)
+    store.close()
+
+    assert loaded == _strokes()
+    assert missing is None

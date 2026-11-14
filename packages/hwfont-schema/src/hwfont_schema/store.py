@@ -5,7 +5,7 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
-from hwfont_schema.enums import PositionInWord, ReviewStatus
+from hwfont_schema.enums import Kind, PositionInWord, ReviewStatus
 from hwfont_schema.sample import Sample, Target
 from hwfont_schema.strokes import StrokeData
 
@@ -127,6 +127,34 @@ class GlyphStore:
                 (label, position.value),
             ).fetchall()
         return [Sample.model_validate_json(row[0]) for row in rows]
+
+    def all_samples(self, status: ReviewStatus | None = None) -> list[Sample]:
+        """Every sample in the store, ordered by label then id; optionally one review status."""
+        if status is None:
+            rows = self._conn.execute("SELECT data FROM sample ORDER BY label, id").fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT data FROM sample WHERE review_status = ? ORDER BY label, id",
+                (status.value,),
+            ).fetchall()
+        return [Sample.model_validate_json(row[0]) for row in rows]
+
+    def load_strokes(self, sample: Sample) -> StrokeData | None:
+        """Read a sample's stroke sidecar, or None when the sample has no stroke data."""
+        if sample.strokes_path is None:
+            return None
+        path = self.root / sample.strokes_path
+        return StrokeData.model_validate_json(path.read_text(encoding="utf-8"))
+
+    def targets(self) -> list[Target]:
+        """The target catalog, ordered by label."""
+        rows = self._conn.execute(
+            "SELECT label, kind, required_count FROM target ORDER BY label"
+        ).fetchall()
+        return [
+            Target(label=label, kind=Kind(kind), required_count=required)
+            for label, kind, required in rows
+        ]
 
     def add_target(self, target: Target) -> None:
         self._conn.execute(
