@@ -52,3 +52,32 @@ def e2e_store(tmp_path_factory):
     )
     yield store
     store.close()
+
+
+@pytest.fixture(scope="session")
+def fixture_loaded(fixture_store):
+    from font_gen.load import load_store
+    return load_store(fixture_store)
+
+
+@pytest.fixture(scope="session")
+def fixture_plan(fixture_loaded):
+    from font_gen.select import plan_glyphs
+    return plan_glyphs(fixture_loaded)[0]
+
+
+@pytest.fixture(scope="session")
+def fixture_samples(fixture_loaded):
+    from font_gen.select import sample_index
+    return sample_index(fixture_loaded)
+
+
+@pytest.fixture(scope="session")
+def fixture_outlines(fixture_plan, fixture_samples):
+    from font_gen.outline import Outline, notdef_outline, outline_from_strokes
+    out = {".notdef": notdef_outline(), "space": Outline.empty()}
+    for g in fixture_plan.glyphs:
+        if g.sample_id is not None:
+            ls = fixture_samples[g.sample_id]
+            out[g.name] = outline_from_strokes(ls.strokes, ls.sample.metrics, glyph=g.name).outline
+    return out
