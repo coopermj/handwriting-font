@@ -10,7 +10,7 @@ from hwfont_schema.candidate import Candidate, CandidateProvenance, CandidateSet
 from hwfont_schema.sample import Context, Metrics, Sample, Target
 from hwfont_schema.sidecar import CaptureSidecar, Fiducial, Page, Region
 from hwfont_schema.store import CoverageRow, GlyphStore
-from hwfont_schema.strokes import Contour, StrokeData, StrokePoint
+from hwfont_schema.strokes import Contour, Outline, StrokeData, StrokePoint
 
 __version__ = "0.1.0"
 
@@ -18,6 +18,7 @@ __all__ = [
     "BBox",
     "StrokeData",
     "Contour",
+    "Outline",
     "StrokePoint",
     "CaptureSidecar",
     "Fiducial",

@@ -23,17 +23,24 @@ class Candidate(BaseModel):
     strokes_path: str | None = None
     crop_path: str | None = None
     status: CandidateStatus
+    review_reasons: list[str] = Field(default_factory=list)  # why status is needs_review
     alignment_method: str
     model: str
     created_at: str  # ISO-8601, supplied by the caller
 
 
 class CandidateProvenance(BaseModel):
-    """Where a CandidateSet came from and how it was aligned (un-reproducible run metadata)."""
+    """Where a CandidateSet came from and how it was aligned (un-reproducible run metadata).
+
+    At least one of `source_raster` / `source_svg` / `source_rm` names the real input;
+    a raster extracted from a vector export has no file of its own, so `source_raster`
+    is None in that case.
+    """
 
     source_page_id: str
-    source_raster: str
+    source_raster: str | None = None
     source_svg: str | None = None
+    source_rm: str | None = None
     alignment_method: str
     alignment_residual_px: float | None = None
     model: str

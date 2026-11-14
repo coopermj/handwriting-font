@@ -41,7 +41,13 @@ def _candidate(**overrides):
 def test_candidate_roundtrip_and_optional_paths():
     c = _candidate()
     assert c.strokes_path is None and c.crop_path is None
+    assert c.review_reasons == []
     assert Candidate.model_validate_json(c.model_dump_json()) == c
+
+
+def test_candidate_review_reasons_roundtrip():
+    c = _candidate(status=CandidateStatus.needs_review, review_reasons=["count_mismatch", "low_confidence"])
+    assert Candidate.model_validate_json(c.model_dump_json()).review_reasons == ["count_mismatch", "low_confidence"]
 
 
 def test_candidate_confidence_bounds():
@@ -71,4 +77,9 @@ def test_candidate_set_roundtrip_and_provenance():
         alignment_method="geometric_scale",
         model="claude-opus-4-8",
     )
-    assert prov.source_svg is None and prov.alignment_residual_px is None
+    assert prov.source_svg is None and prov.source_rm is None and prov.alignment_residual_px is None
+    # a raster extracted from a vector export has no raster file of its own
+    prov = CandidateProvenance(
+        source_page_id="p0", source_svg="page1.svg", alignment_method="fiducial", model="m",
+    )
+    assert prov.source_raster is None
