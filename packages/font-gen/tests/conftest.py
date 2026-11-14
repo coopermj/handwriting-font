@@ -104,6 +104,43 @@ def fixture_outlines(fixture_plan, fixture_samples):
     return out
 
 
+
+@pytest.fixture(scope="session")
+def fixture_hm(fixture_plan, fixture_outlines, fixture_samples):
+    from font_gen.metrics import hmetrics, lowercase_advances, space_advance
+    space = space_advance(lowercase_advances(fixture_plan, fixture_samples))[0]
+    return hmetrics(fixture_plan, fixture_outlines, fixture_samples, space)
+
+
+@pytest.fixture(scope="session")
+def fixture_vm(fixture_plan, fixture_outlines, fixture_samples):
+    from font_gen.metrics import collect_vertical
+    return collect_vertical(fixture_plan, fixture_outlines, fixture_samples)
+
+
+@pytest.fixture(scope="session")
+def fixture_carets(fixture_plan, fixture_hm):
+    from font_gen.metrics import ligature_carets
+    return ligature_carets(fixture_plan, fixture_hm)
+
+
+@pytest.fixture(scope="session")
+def fixture_fea(fixture_plan, fixture_carets):
+    from font_gen.features import generate_features
+    return generate_features(fixture_plan, fixture_carets, digest12="000000000000")
+
+
+@pytest.fixture(scope="session")
+def fixture_meta():
+    from font_gen.build import BuildMeta
+    return BuildMeta("Fixture Hand", "Regular", "000000000000", "1970-01-01T00:00:00Z")
+
+
+@pytest.fixture(scope="session")
+def fixture_otf(fixture_plan, fixture_outlines, fixture_hm, fixture_vm, fixture_fea, fixture_meta):
+    from font_gen.build import build_font
+    return build_font(fixture_plan, fixture_outlines, fixture_hm, fixture_vm, fixture_fea, fixture_meta)
+
 def build_stub_font(plan, fea_text: str) -> bytes:
     """A CFF stub font with a box outline per glyph, used to compile and shape generated features."""
     from io import BytesIO
