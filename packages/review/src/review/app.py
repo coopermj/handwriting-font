@@ -25,6 +25,7 @@ from review.decisions import accept, adjust_box, reject, relabel, reset, set_qua
 from review.errors import ReviewError
 from review.ink import composite_page
 from review.run import Session
+from review.session import effective_context
 
 STATIC_DIR = files("review") / "static"
 
@@ -73,7 +74,7 @@ def _session_json(session: Session) -> dict:
                     "region_id": c.region_id,
                     "confidence": c.confidence,
                     "status": c.status.value,
-                    "context": c.context.model_dump(mode="json"),
+                    "context": effective_context(pg, c.region_id, c.id).model_dump(mode="json"),
                     "original_bbox": c.bbox.model_dump(mode="json"),
                     "decision": log.decisions[c.id].model_dump(mode="json"),
                 }

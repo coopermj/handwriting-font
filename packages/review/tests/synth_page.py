@@ -14,6 +14,7 @@ import math
 import random
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from hwfont_schema import (
     BBox,
@@ -244,7 +245,11 @@ def synth_page(
     raster: bool = True,
     page_id: str = "p0",
     session_stem: str = "capture",
+    contexts: Literal["transcript", "ingest"] = "transcript",
 ) -> SynthPage:
+    """`contexts="transcript"` gives every candidate its true Context (cumulative character offsets);
+    `"ingest"` reproduces the pre-fix ingest, `derive_context(transcript, label, box_index)`, so every box
+    after a ligature box carries a Context shifted by `len(label) - 1` units."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     ligatures = ligatures or {}
@@ -306,7 +311,11 @@ def synth_page(
                 kind=Kind.ligature if n > 1 else Kind.single,
                 confidence=confidence,
                 bbox=_extent_box(polys),
-                context=ligature_context(transcript, start, n),
+                context=(
+                    ligature_context(transcript, start, n)
+                    if contexts == "transcript"
+                    else derive_context(transcript, label, ci)
+                ),
                 status=CandidateStatus.needs_review if needs_review else CandidateStatus.pending,
                 alignment_method=ALIGNMENT_METHOD,
                 model=MODEL,

@@ -11,7 +11,7 @@ import statistics
 from dataclasses import dataclass
 
 import numpy as np
-from hwfont_schema import Region
+from hwfont_schema import Context, PositionInWord, Region
 
 from review.ink import candidate_extent, strokes_to_polylines
 from review.inputs import PageInputs, ReviewInputs
@@ -59,14 +59,71 @@ def _adjacent(page: PageInputs, region_id: str, candidate_id: str) -> tuple[str 
     return left, right
 
 
-def _agree(page: PageInputs, region_id: str, candidate_id: str) -> tuple[str | None, str | None, bool, bool]:
-    """Adjacent ids and, per side, whether context names a neighbour there."""
-    ctx = page.candidates[candidate_id].context
-    left, right = _adjacent(page, region_id, candidate_id)
-    left_ok = left is not None and ctx.left_neighbor is not None and page.candidates[left].label[-1] == ctx.left_neighbor
-    right_ok = (
-        right is not None and ctx.right_neighbor is not None and page.candidates[right].label[0] == ctx.right_neighbor
+def _unit_map(transcript: str) -> list[tuple[str, int, int, int]]:
+    """For each non-space char (in order): (char, word_index, pos_in_word, word_len)."""
+    out: list[tuple[str, int, int, int]] = []
+    words = transcript.split()
+    word_index, pos, prev_space = -1, 0, True
+    for ch in transcript:
+        if ch.isspace():
+            prev_space = True
+            continue
+        if prev_space:
+            word_index, pos, prev_space = word_index + 1, 0, False
+        out.append((ch, word_index, pos, len(words[word_index])))
+        pos += 1
+    return out
+
+
+def _span_context(transcript: str, label: str, offset: int, length: int) -> Context:
+    """Context of the `length` units starting at character offset `offset` (same rules as ingest's
+    `derive_context(transcript, label, offset, length)`; implemented locally, not imported)."""
+    units = _unit_map(transcript)
+    if offset < 0 or offset >= len(units):
+        return Context(source_word=label, position_in_word=PositionInWord.isolated)
+    _, word_index, pos, word_len = units[offset]
+    n = max(length, 1)
+    at_start, at_end = pos == 0, pos + n - 1 >= word_len - 1
+    if at_start and at_end:
+        position = PositionInWord.isolated
+    elif at_start:
+        position = PositionInWord.initial
+    elif at_end:
+        position = PositionInWord.final
+    else:
+        position = PositionInWord.medial
+    right = offset + n
+    return Context(
+        source_word=transcript.split()[word_index],
+        left_neighbor=None if at_start else units[offset - 1][0],
+        right_neighbor=units[right][0] if not at_end and right < len(units) else None,
+        position_in_word=position,
     )
+
+
+def effective_context(page: PageInputs, region_id: str, candidate_id: str) -> Context:
+    """The candidate's Context, re-derived from the transcript when the region's ORIGINAL labels in unit
+    order spell it (whitespace removed) — cumulative character offsets, so a box after a ligature is not
+    shifted — else the candidate's own Context unchanged."""
+    region = page.region(region_id)
+    order = unit_order(page, region_id)
+    labels = [page.candidates[cid].label for cid in order]
+    if "".join(labels) != "".join(region.expected_transcript.split()):
+        return page.candidates[candidate_id].context
+    i = order.index(candidate_id)
+    offset = sum(len(lab) for lab in labels[:i])
+    return _span_context(region.expected_transcript, labels[i], offset, len(labels[i]))
+
+
+def _agree(page: PageInputs, region_id: str, candidate_id: str) -> tuple[str | None, str | None, bool, bool]:
+    """Adjacent ids and, per side, whether the effective context names a neighbour there that the adjacent
+    unit's original label agrees with (an empty label never agrees)."""
+    ctx = effective_context(page, region_id, candidate_id)
+    left, right = _adjacent(page, region_id, candidate_id)
+    left_label = page.candidates[left].label if left is not None else ""
+    right_label = page.candidates[right].label if right is not None else ""
+    left_ok = ctx.left_neighbor is not None and left_label != "" and left_label[-1] == ctx.left_neighbor
+    right_ok = ctx.right_neighbor is not None and right_label != "" and right_label[0] == ctx.right_neighbor
     return (left if left_ok else None), (right if right_ok else None), left_ok, right_ok
 
 
@@ -78,8 +135,8 @@ def neighbours(page: PageInputs, region_id: str, candidate_id: str) -> tuple[str
 
 
 def context_mismatch(page: PageInputs, region_id: str, candidate_id: str) -> tuple[bool, bool]:
-    """Per side: Context names a neighbour, an adjacent unit exists, and its label disagrees."""
-    ctx = page.candidates[candidate_id].context
+    """Per side: the effective context names a neighbour, an adjacent unit exists, and its label disagrees."""
+    ctx = effective_context(page, region_id, candidate_id)
     left, right = _adjacent(page, region_id, candidate_id)
     _, _, left_ok, right_ok = _agree(page, region_id, candidate_id)
     return (

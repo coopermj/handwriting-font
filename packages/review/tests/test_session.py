@@ -13,6 +13,7 @@ from review.session import (
     SessionStats,
     compute_stats,
     context_mismatch,
+    effective_context,
     neighbours,
     unit_order,
 )
@@ -64,3 +65,37 @@ def test_half_gap_hand_checked(tmp_path):
     a, b = unit_order(pg, sp.page.regions[0].id)
     ea, eb = (candidate_extent(pg.candidates[i], pg.strokes.get(i), pg.crops.get(i)) for i in (a, b))
     assert compute_stats(inputs).median_half_gap == pytest.approx(0.5 * (eb.xmin - ea.xmax) / 70)
+
+
+def test_effective_context_undoes_ingest_shift_after_ligature(tmp_path):  # C1
+    sp = synth_page(tmp_path, ["the cat sat", "the hat"], ligatures={1: [(0, "th")]}, contexts="ingest")
+    inputs = load_inputs(sp.sidecar_path, [sp.candidate_dir])
+    pg = inputs.pages["p0"]
+    r1 = sp.page.regions[1].id
+    th, e, h, a, t = unit_order(pg, r1)
+    assert pg.candidates[e].context.position_in_word.value == "medial"  # today's ingest: shifted by one
+    assert pg.candidates[h].context.source_word == "the"
+    ctx_e, ctx_h = effective_context(pg, r1, e), effective_context(pg, r1, h)
+    assert (ctx_e.source_word, ctx_e.position_in_word.value, ctx_e.left_neighbor, ctx_e.right_neighbor) == (
+        "the", "final", "h", None)
+    assert (ctx_h.source_word, ctx_h.position_in_word.value, ctx_h.left_neighbor, ctx_h.right_neighbor) == (
+        "hat", "initial", None, "a")
+    ctx_th = effective_context(pg, r1, th)
+    assert (ctx_th.position_in_word.value, ctx_th.right_neighbor) == ("initial", "e")
+    assert neighbours(pg, r1, e) == (th, None) and neighbours(pg, r1, h) == (None, a)
+    for cid in unit_order(pg, r1):
+        assert context_mismatch(pg, r1, cid) == (False, False), cid
+    truth = synth_page(tmp_path / "t", ["the cat sat", "the hat"], ligatures={1: [(0, "th")]})
+    assert compute_stats(inputs) == compute_stats(load_inputs(truth.sidecar_path, [truth.candidate_dir]))
+
+
+def test_effective_context_falls_back_when_labels_do_not_spell_transcript(tmp_path):  # C1
+    sp = synth_page(tmp_path, ["the hat"], ligatures={0: [(0, "th")]}, contexts="ingest")
+    inputs = load_inputs(sp.sidecar_path, [sp.candidate_dir])
+    pg = inputs.pages["p0"]
+    r0 = sp.page.regions[0].id
+    ids = unit_order(pg, r0)
+    wrong = pg.candidates[ids[2]].model_copy(update={"label": "q"})  # vision misread 'h' of "hat"
+    pg2 = dataclasses.replace(pg, candidates={**pg.candidates, ids[2]: wrong})
+    for cid in ids:
+        assert effective_context(pg2, r0, cid) == pg2.candidates[cid].context

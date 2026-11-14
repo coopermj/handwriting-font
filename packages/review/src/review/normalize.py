@@ -31,7 +31,7 @@ from review.ink import (
     strokes_to_polylines,
 )
 from review.inputs import PageInputs, ReviewInputs
-from review.session import SessionStats, context_mismatch, neighbours, scale
+from review.session import SessionStats, context_mismatch, effective_context, neighbours, scale
 
 ADVANCE_CLAMP = 0.02
 STUB_EXTENT = 0.002  # em; a zero-extent axis is widened to this (inside emspace.BBOX_TOL)
@@ -186,7 +186,7 @@ def materialise(inputs: ReviewInputs, stats: SessionStats, log: ReviewLog, candi
             id=sample_id(log.session_id, candidate_id),
             label=decision.label,
             kind=decision.kind,
-            context=candidate.context,
+            context=effective_context(page, candidate.region_id, candidate_id),
             metrics=Metrics(baseline=0.0, x_height=stats.x_height, advance=advance, bbox=bbox_em),
             quality=quality,
             review_status=ReviewStatus.accepted,

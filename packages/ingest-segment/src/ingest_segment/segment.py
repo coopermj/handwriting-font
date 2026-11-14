@@ -42,9 +42,12 @@ def _unit_map(transcript: str) -> list[tuple[str, int, int, int]]:
     return out
 
 
-def derive_context(transcript: str, label: str, unit_index: int) -> Context:
-    """Build a Context for the unit at `unit_index` from the known transcript.
+def derive_context(transcript: str, label: str, unit_index: int, length: int = 1) -> Context:
+    """Build a Context for the span of `length` units starting at `unit_index` from the known transcript.
 
+    `unit_index` is the cumulative character offset of the span (not a box index); a multi-character
+    label (ligature) covers `length` units, its right neighbour is the unit after its last character and
+    its position is initial/final/isolated/medial for the whole span within the first unit's word.
     Falls back to an isolated, neighborless context if the index is out of range
     (caller flags the candidate needs_review in that case).
     """
@@ -54,18 +57,22 @@ def derive_context(transcript: str, label: str, unit_index: int) -> Context:
 
     _, word_index, pos, word_len = units[unit_index]
     source_word = transcript.split()[word_index]
+    last_pos = pos + max(length, 1) - 1
+    at_start = pos == 0
+    at_end = last_pos >= word_len - 1
 
-    if word_len == 1:
+    if at_start and at_end:
         position = PositionInWord.isolated
-    elif pos == 0:
+    elif at_start:
         position = PositionInWord.initial
-    elif pos == word_len - 1:
+    elif at_end:
         position = PositionInWord.final
     else:
         position = PositionInWord.medial
 
-    left = units[unit_index - 1] if pos > 0 else None
-    right = units[unit_index + 1] if pos < word_len - 1 else None
+    left = units[unit_index - 1] if not at_start else None
+    right_index = unit_index + max(length, 1)
+    right = units[right_index] if not at_end and right_index < len(units) else None
     return Context(
         source_word=source_word,
         left_neighbor=left[0] if left else None,
@@ -192,6 +199,7 @@ def segment_region(
     count_mismatch = len(result.boxes) != len(region.expected_units)
 
     out: list[tuple[Candidate, list[list[tuple[float, float]]]]] = []
+    offset = 0  # cumulative character offset: a ligature box covers len(label) units
     for i, box in enumerate(result.boxes):
         # crop px -> page px: offset by the region crop origin
         page_bbox = BBox(
@@ -203,7 +211,8 @@ def segment_region(
         assigned = [
             s for s in page_strokes if _points_in_box(s, page_bbox) >= _STROKE_INSIDE_FRACTION
         ]
-        context = derive_context(region.expected_transcript, box.label, i)
+        context = derive_context(region.expected_transcript, box.label, offset, len(box.label))
+        offset += len(box.label)
 
         needs_review = (
             count_mismatch
