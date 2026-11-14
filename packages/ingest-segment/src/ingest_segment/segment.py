@@ -5,7 +5,7 @@ import io
 from typing import Callable
 
 from PIL import Image
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from hwfont_schema import (
     BBox,
@@ -18,6 +18,19 @@ from hwfont_schema import (
 )
 
 VISION_MODEL = "claude-opus-4-8"
+# Output cap for one region's VisionResult. Adaptive thinking shares this budget, and a
+# real 60-unit row produced ~4.5k characters of boxes alone, which 4096 truncated
+# mid-JSON (2026-11-14). 16000 is the guideline ceiling for a non-streaming request
+# (the SDK requires streaming well above it); the SDK itself has no default.
+VISION_MAX_TOKENS = 16000
+
+
+class VisionError(RuntimeError):
+    """The vision call returned no usable VisionResult for a region (refusal, no text block)."""
+
+
+class VisionTruncated(VisionError):
+    """The vision response hit `max_tokens` before the box list was complete."""
 
 
 def _unit_map(transcript: str) -> list[tuple[str, int, int, int]]:
@@ -122,9 +135,32 @@ class ClaudeVisionClient:
 
     def __call__(self, crop_png: bytes, region: Region) -> VisionResult:
         b64 = base64.standard_b64encode(crop_png).decode("ascii")
-        response = self._client.messages.parse(
+        try:
+            response = self._parse(b64, region)
+        except ValidationError as e:
+            # output_config.format constrains the grammar, so JSON that does not validate
+            # is JSON that was cut off: the SDK validates inside parse(), before we can
+            # read stop_reason.
+            raise VisionTruncated(
+                f"vision response for region {region.id!r} did not validate, most likely cut "
+                f"off by max_tokens={VISION_MAX_TOKENS} ({len(region.expected_units)} expected units)"
+            ) from e
+        if response.stop_reason == "max_tokens":
+            raise VisionTruncated(
+                f"vision response for region {region.id!r} hit max_tokens={VISION_MAX_TOKENS}; "
+                f"{len(region.expected_units)} expected units"
+            )
+        if response.parsed_output is None:
+            raise VisionError(
+                f"vision response for region {region.id!r} carried no boxes "
+                f"(stop_reason={response.stop_reason!r})"
+            )
+        return response.parsed_output
+
+    def _parse(self, b64: str, region: Region):
+        return self._client.messages.parse(
             model=self.model,
-            max_tokens=4096,
+            max_tokens=VISION_MAX_TOKENS,
             thinking={"type": "adaptive"},
             output_config={"effort": "high"},
             output_format=VisionResult,
@@ -144,7 +180,6 @@ class ClaudeVisionClient:
                 }
             ],
         )
-        return response.parsed_output
 
 
 # a box's confidence below this flags its candidate needs_review

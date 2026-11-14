@@ -5,7 +5,9 @@ from ingest_segment.run import ingest_page, main
 from ingest_segment.segment import (
     ClaudeVisionClient,
     VisionBox,
+    VisionError,
     VisionResult,
+    VisionTruncated,
     derive_context,
     segment_region,
 )
@@ -27,7 +29,9 @@ __all__ = [
     "main",
     "ClaudeVisionClient",
     "VisionBox",
+    "VisionError",
     "VisionResult",
+    "VisionTruncated",
     "derive_context",
     "segment_region",
     "RemarkableExport",
