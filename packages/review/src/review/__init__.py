@@ -36,7 +36,7 @@ from review.ink import (
     strokes_to_polylines,
 )
 from review.inputs import PageInputs, ReviewInputs, load_inputs
-from review.normalize import ADVANCE_CLAMP, Materialised, materialise, sample_id
+from review.normalize import ADVANCE_CLAMP, STUB_EXTENT, Materialised, materialise, sample_id
 from review.session import (
     HALF_GAP_DEFAULT,
     XH_LETTERS,
@@ -61,6 +61,7 @@ __all__ = [
     "INSIDE_FRACTION",
     "LOG_NAME",
     "RASTER_SCALE",
+    "STUB_EXTENT",
     "XH_LETTERS",
     "XH_PERCENTILE",
     "X_HEIGHT_DEFAULT",

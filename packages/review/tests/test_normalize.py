@@ -14,7 +14,7 @@ from review.decisions import adjust_box, default_log, relabel
 from review.errors import ReviewError
 from review.ink import candidate_extent
 from review.inputs import load_inputs
-from review.normalize import ADVANCE_CLAMP, materialise
+from review.normalize import ADVANCE_CLAMP, STUB_EXTENT, materialise
 from review.session import compute_stats, neighbours, unit_order
 
 
@@ -125,3 +125,16 @@ def test_every_synthetic_candidate_conforms(inputs, stats, log):
         m = materialise(inputs, stats, log, cid)
         assert check_sample_em(m.sample, m.strokes, m.raster) == [], cid
         assert m.sample.quality == Quality.good and "advance_clamped" not in m.flags, cid
+
+@pytest.mark.parametrize("axis", ["horizontal", "vertical"])
+def test_zero_extent_stub_is_widened_and_flagged(inputs, stats, log, axis):
+    cid = _id_of(inputs, "c", region=0); pg = inputs.pages["p0"]
+    e = candidate_extent(pg.candidates[cid], pg.strokes[cid], None)
+    x0, y0 = e.xmin + 2, e.ymax - 5
+    x1, y1 = (x0 + 4, y0) if axis == "horizontal" else (x0, y0 - 4)
+    stub = StrokeData(contours=[Contour(points=[StrokePoint(x=x0, y=y0), StrokePoint(x=x1, y=y1)])])
+    m = materialise(dataclasses.replace(inputs, pages={"p0": dataclasses.replace(pg, strokes={**pg.strokes, cid: stub})}), stats, log, cid)
+    b = m.sample.metrics.bbox
+    assert (b.h if axis == "horizontal" else b.w) == STUB_EXTENT
+    assert "stub_extent" in m.flags and m.sample.quality == Quality.good and m.raster is not None
+    assert check_sample_em(m.sample, m.strokes, m.raster) == []

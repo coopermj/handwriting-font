@@ -34,6 +34,7 @@ from review.inputs import PageInputs, ReviewInputs
 from review.session import SessionStats, context_mismatch, neighbours, scale
 
 ADVANCE_CLAMP = 0.02
+STUB_EXTENT = 0.002  # em; a zero-extent axis is widened to this (inside emspace.BBOX_TOL)
 
 
 @dataclass(frozen=True)
@@ -157,9 +158,11 @@ def materialise(inputs: ReviewInputs, stats: SessionStats, log: ReviewLog, candi
     else:
         minx, maxx = (ink.xmin - origin_x_px) * s, (ink.xmax - origin_x_px) * s
         miny, maxy = (baseline_px - ink.ymax) * s, (baseline_px - ink.ymin) * s
-    if maxx - minx <= 0 or maxy - miny <= 0:
-        raise ReviewError(f"degenerate ink for candidate {candidate_id!r}: zero-width or zero-height extent")
-    bbox_em = BBox(x=minx, y=miny, w=maxx - minx, h=maxy - miny)
+    w, h = maxx - minx, maxy - miny
+    if w <= 0 or h <= 0:  # a 2-point stub sharing one x or y (em-v1 allows it)
+        w, h = (w if w > 0 else STUB_EXTENT), (h if h > 0 else STUB_EXTENT)
+        flags.append("stub_extent")
+    bbox_em = BBox(x=minx, y=miny, w=w, h=h)
 
     # 7. advance
     advance = bbox_em.x + bbox_em.w + rsb_px * s
