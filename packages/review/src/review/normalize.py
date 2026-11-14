@@ -14,6 +14,7 @@ import numpy as np
 from hwfont_schema import BBox, Contour, Metrics, Quality, ReviewStatus, Sample, StrokeData, StrokePoint
 from hwfont_schema.emspace import check_sample_em
 from PIL import Image
+from pydantic import ValidationError
 
 from review.decisions import ReviewLog
 from review.errors import ReviewError
@@ -176,18 +177,21 @@ def materialise(inputs: ReviewInputs, stats: SessionStats, log: ReviewLog, candi
         crop = page.crops[candidate_id]  # present: raster-only ink came from it
         raster = resample_raster(_decode(crop), crop_origin(candidate.bbox), bbox_em, origin_x_px, baseline_px, s)
 
-    # 8. sample
-    sample = Sample(
-        id=sample_id(log.session_id, candidate_id),
-        label=decision.label,
-        kind=decision.kind,
-        context=candidate.context,
-        metrics=Metrics(baseline=0.0, x_height=stats.x_height, advance=advance, bbox=bbox_em),
-        quality=quality,
-        review_status=ReviewStatus.accepted,
-        capture_session_id=log.session_id,
-        created_at=decision.updated_at,
-    )
+    # 8. sample (schema failure → ReviewError, nothing written)
+    try:
+        sample = Sample(
+            id=sample_id(log.session_id, candidate_id),
+            label=decision.label,
+            kind=decision.kind,
+            context=candidate.context,
+            metrics=Metrics(baseline=0.0, x_height=stats.x_height, advance=advance, bbox=bbox_em),
+            quality=quality,
+            review_status=ReviewStatus.accepted,
+            capture_session_id=log.session_id,
+            created_at=decision.updated_at,
+        )
+    except ValidationError as exc:
+        raise ReviewError(f"sample for candidate {candidate_id!r} fails the schema: {exc}") from exc
 
     # 10. em-v1 check
     violations = check_sample_em(sample, strokes_em, raster)
