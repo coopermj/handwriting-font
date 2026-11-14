@@ -180,7 +180,7 @@ def normalized_otf(out: Path) -> tuple[Path, Finding | None]:
     """Amendment 9: the font is always written to `out.with_suffix(".otf")`; any suffix other than `.otf` or none is
     reported (`--out Hand.ttf --ttf` would otherwise map the OTF and the TTF to the same file)."""
     otf = out.with_suffix(".otf")
-    if out.suffix in ("", ".otf"):
+    if out.suffix.lower() in ("", ".otf"):
         return otf, None
     return otf, Finding("info", "output_path_normalized", f"wrote {otf} for --out {out}",
                         data={"out": str(out), "otf": str(otf)})

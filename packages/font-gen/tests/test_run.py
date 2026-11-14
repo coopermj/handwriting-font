@@ -313,3 +313,10 @@ def test_build_options_smooth_sigma_is_the_centerline_constant():
     from font_gen.centerline import SMOOTH_SIGMA
     assert run_mod.BuildOptions().smooth_sigma == SMOOTH_SIGMA
     assert run_mod.build_parser().parse_args(["build", "--store", "s", "--out", "o"]).smooth_sigma == SMOOTH_SIGMA
+
+
+def test_normalized_otf_ignores_suffix_case_and_handles_dotted_stems(tmp_path):
+    from font_gen.run import normalized_otf
+    assert normalized_otf(tmp_path / "Hand.OTF") == (tmp_path / "Hand.otf", None)
+    path, finding = normalized_otf(tmp_path / "Hand.v2")
+    assert path == tmp_path / "Hand.otf" and finding is not None and finding.code == "output_path_normalized"

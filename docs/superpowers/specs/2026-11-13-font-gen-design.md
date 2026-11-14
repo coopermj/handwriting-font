@@ -596,7 +596,7 @@ Rule: **flag, never silently drop.** The report is always written (`<Family>.qa.
 **Severity policy.**
 - **error** — the font is *not* written (or, if the error arises after a write, every file this run wrote is deleted); exit code **1**: `empty_font`, `store_invalid`, `glyph_name_invalid`, `feature_compile_failed`, `reload_failed`, `metrics_inconsistent_binary`, `shaping_check_failed`, `output_exists` (without `--force`).
 - **warn** — data problems the owner must know about; the font is written; exit **0**. `--strict` turns any warn into exit **2** and no font: `target_no_samples`, `sample_no_ink`, `sidecar_missing`, `convention_violation`, `kind_mismatch`, `raster_scale_mismatch`, `outline_degenerate`, `outline_empty`, `outline_fit_fallback`, `outline_unstable`, `outline_fragmented`, `raster_fallback`, `raster_unavailable`, `metrics_inconsistent`, `metrics_suspicious`, `advance_outlier`, `x_height_outlier`, `baseline_nonzero` (`|baseline| > 0.1`), `pressure_partial`, `ring_singleton`, `ligature_component_missing`, `proof_png_failed`.
-- **info** — `target_below_required`, `ring_short`, `ring_surplus`, `ring_not_prime`, `marginal_used`, `bad_sample_excluded`, `position_rederived`, `ligature_restricted`, `ligature_overlap`, `dot_rendered`, `stroke_degenerate`, `outline_tiny_contour`, `nib_width_assumed`, `space_advance_assumed`, `proof_png_skipped` (cairosvg not installed), font statistics.
+- **info** — `target_below_required`, `ring_short`, `ring_surplus`, `ring_not_prime`, `marginal_used`, `bad_sample_excluded`, `position_rederived`, `ligature_restricted`, `ligature_overlap`, `dot_rendered`, `stroke_degenerate`, `outline_tiny_contour`, `nib_width_assumed`, `space_advance_assumed`, `proof_png_skipped` (cairosvg not installed), `output_path_normalized` (Amendment 9), font statistics.
 
 **Post-build self-check** (on the bytes, before writing; `uharfbuzz` is a hard dependency so it always runs):
 1. `TTFont(BytesIO(otf))` loads; `getGlyphOrder()` equals the plan; charstring count equals glyph count.
@@ -619,11 +619,11 @@ Pillow has no raqm here, so the proof does not ask Pillow to shape. One implemen
 Subcommands are the one deviation from `ingest-segment`'s flat parser, because there are three verbs with different required arguments:
 
 ```
-font-gen build --store DIR --out Family.otf [--ttf] [--family "Micah Hand"] [--style Regular]
+font-gen build --store DIR --out Family.otf [--ttf]   # --out is normalised to .otf, see Amendment 9 [--family "Micah Hand"] [--style Regular]
                [--nib-em 0.045] [--ring 7] [--pos-min 3] [--space-em EM] [--smooth-sigma 0.25]
                [--cycle-mode stream|word] [--proof proof.svg] [--proof-png] [--qa report.json]
                [--strict] [--created-at ISO] [--force]
-font-gen demo  --out DIR [--seed 1] [--ttf]
+font-gen demo  --out DIR [--seed 1] [--ttf] [--force]
 font-gen proof --font Family.otf --out proof.svg [--text FILE] [--only-text] [--png] [--force]
 ```
 
