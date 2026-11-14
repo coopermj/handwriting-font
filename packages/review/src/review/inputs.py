@@ -62,7 +62,11 @@ def _load_page(page: Page, candidate_dir: Path, raster_path: Path | None) -> Pag
 
     strokes: dict[str, StrokeData] = {}
     crops: dict[str, bytes] = {}
+    seen: set[str] = set()
     for c in cs.candidates:
+        if c.id in seen:
+            raise ReviewError(f"candidate id {c.id!r} appears twice in {manifest}")
+        seen.add(c.id)
         if c.strokes_path:
             raw = _read(candidate_dir / c.strokes_path, "strokes file", c.id)
             try:

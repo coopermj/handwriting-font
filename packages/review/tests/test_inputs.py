@@ -48,3 +48,14 @@ def test_missing_stroke_file_is_an_error(synth):
     (synth.candidate_dir / victim.strokes_path).unlink()
     with pytest.raises(ReviewError, match=victim.id):
         load_inputs(synth.sidecar_path, [synth.candidate_dir])
+
+
+def test_duplicate_candidate_id_within_one_set_is_an_error(synth, tmp_path):
+    cs = CandidateSet.model_validate_json((synth.candidate_dir / "candidates.json").read_text())
+    dup = cs.candidates[0]
+    cs = cs.model_copy(update={"candidates": [*cs.candidates, dup]})
+    other = tmp_path / "dupset"
+    shutil.copytree(synth.candidate_dir, other)
+    (other / "candidates.json").write_text(cs.model_dump_json())
+    with pytest.raises(ReviewError, match=dup.id):
+        load_inputs(synth.sidecar_path, [other])
