@@ -400,7 +400,10 @@
       list.appendChild(li);
     }
     $("cov-untargeted").textContent = cov.untargeted.length
-      ? "untargeted: " + cov.untargeted.map(([lab, n]) => `${lab}×${n}`).join(", ")
+      ? "untargeted: " + cov.untargeted.map(([lab, kind, n]) => {
+        const plain = (kind === "single") === ([...lab].length === 1) && !cov.lines.some((l) => l.label === lab);
+        return `${plain ? lab : `${lab} (${kind})`}×${n}`;
+      }).join(", ")
       : "";
   }
 

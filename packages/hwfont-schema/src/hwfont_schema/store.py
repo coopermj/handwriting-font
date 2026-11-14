@@ -56,12 +56,14 @@ class GlyphStore:
         return cls(root, conn)
 
     @classmethod
-    def open(cls, root: str | Path) -> "GlyphStore":
+    def open(cls, root: str | Path, *, check_same_thread: bool = True) -> "GlyphStore":
+        """Open an existing store. `check_same_thread=False` lets other threads use the connection
+        (sqlite3's own flag); the caller must then serialise access itself."""
         root = Path(root)
         db_path = root / "store.db"
         if not db_path.exists():
             raise FileNotFoundError(f"No glyph store at {db_path}")
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, check_same_thread=check_same_thread)
         return cls(root, conn)
 
     def close(self) -> None:

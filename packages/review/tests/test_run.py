@@ -261,3 +261,11 @@ def test_inconsistencies_reported_and_cleared_by_replay(tmp_path, synth, capsys)
     capsys.readouterr()
     assert main(["coverage", *_common(tmp_path, synth)]) == 0
     assert "warning" not in capsys.readouterr().err
+
+
+def test_module_entry_point():  # I8
+    import subprocess
+    import sys
+
+    r = subprocess.run([sys.executable, "-m", "review.run", "--help"], capture_output=True, text=True)
+    assert r.returncode == 0 and "replay" in r.stdout

@@ -22,22 +22,22 @@ class CoverageLine:
 @dataclass(frozen=True)
 class CoverageReport:
     lines: tuple[CoverageLine, ...]
-    untargeted: tuple[tuple[str, int], ...]
+    untargeted: tuple[tuple[str, Kind, int], ...]  # (label, kind, count) of non-rejected decisions without a target
     met_count: int
     total: int
 
 
 def report(store: GlyphStore, logs: Sequence[ReviewLog]) -> CoverageReport:
     rows = store.coverage()
-    target_labels = {r.label for r in rows}
+    target_keys = {(r.label, Kind(r.kind)) for r in rows}
     pending: Counter[tuple[str, str]] = Counter()
-    untargeted: Counter[str] = Counter()
+    untargeted: Counter[tuple[str, Kind]] = Counter()
     for log in logs:
         for d in log.decisions.values():
             if d.status == DecisionStatus.pending:
                 pending[(d.label, Kind(d.kind).value)] += 1
-            if d.status != DecisionStatus.rejected and d.label not in target_labels:
-                untargeted[d.label] += 1
+            if d.status != DecisionStatus.rejected and (d.label, Kind(d.kind)) not in target_keys:
+                untargeted[(d.label, Kind(d.kind))] += 1
     lines = [
         CoverageLine(
             label=r.label,
@@ -52,10 +52,17 @@ def report(store: GlyphStore, logs: Sequence[ReviewLog]) -> CoverageReport:
     lines.sort(key=lambda l: (l.met, l.label))
     return CoverageReport(
         lines=tuple(lines),
-        untargeted=tuple(sorted(untargeted.items())),
+        untargeted=tuple((lab, kind, n) for (lab, kind), n in sorted(untargeted.items(), key=lambda kv: (kv[0][0], kv[0][1].value))),
         met_count=sum(l.met for l in lines),
         total=len(lines),
     )
+
+
+def _untargeted_name(label: str, kind: Kind, target_labels: set[str]) -> str:
+    """The label alone, or `label (kind)` when the kind is not the one its length implies or the label
+    has a target of another kind (a kind mismatch)."""
+    natural = Kind.single if len(label) == 1 else Kind.ligature
+    return label if kind == natural and label not in target_labels else f"{label} ({kind.value})"
 
 
 def format_report(rep: CoverageReport) -> str:
@@ -68,5 +75,7 @@ def format_report(rep: CoverageReport) -> str:
             s += f" (+{l.pending} pending)"
         out.append(s)
     if rep.untargeted:
-        out.append("untargeted: " + ", ".join(f"{lab}×{n}" for lab, n in rep.untargeted))
+        targets = {l.label for l in rep.lines}
+        names = (f"{_untargeted_name(lab, kind, targets)}×{n}" for lab, kind, n in rep.untargeted)
+        out.append("untargeted: " + ", ".join(names))
     return "\n".join(out)

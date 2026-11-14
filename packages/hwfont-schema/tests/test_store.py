@@ -206,3 +206,44 @@ def test_remove_sample_deletes_row_and_sidecars(tmp_path):
     assert not (tmp_path / "store" / "raster" / "s1.png").exists()
     assert store.coverage() == [] and store.all_samples() == []
     assert store.remove_sample("s1") is False
+
+
+def test_open_with_check_same_thread_false_is_usable_from_another_thread(tmp_path):
+    import sqlite3
+    import threading
+
+    GlyphStore.create(tmp_path).close()
+    store = GlyphStore.open(tmp_path, check_same_thread=False)
+    errors: list[BaseException] = []
+
+    def work() -> None:
+        try:
+            store.add_sample(_sample("s1", "a"))
+            assert store.get_sample("s1") is not None
+        except BaseException as exc:  # noqa: BLE001 - surfaced to the main thread below
+            errors.append(exc)
+
+    t = threading.Thread(target=work)
+    t.start()
+    t.join()
+    try:
+        assert errors == []
+        assert store.get_sample("s1") is not None
+    finally:
+        store.close()
+
+    default = GlyphStore.open(tmp_path)  # default keeps sqlite3's same-thread check
+    caught: list[BaseException] = []
+    t = threading.Thread(target=lambda: caught.extend(_try(lambda: default.get_sample("s1"))))
+    t.start()
+    t.join()
+    default.close()
+    assert len(caught) == 1 and isinstance(caught[0], sqlite3.ProgrammingError)
+
+
+def _try(fn) -> list[BaseException]:
+    try:
+        fn()
+    except BaseException as exc:  # noqa: BLE001
+        return [exc]
+    return []

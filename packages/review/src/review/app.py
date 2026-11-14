@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import dataclasses
 import io
-import sqlite3
 import threading
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -98,7 +97,7 @@ def _coverage_json(session: Session) -> dict:
         lines.append(d)
     return {
         "lines": lines,
-        "untargeted": [list(u) for u in rep.untargeted],
+        "untargeted": [[lab, kind.value, n] for lab, kind, n in rep.untargeted],
         "met_count": rep.met_count,
         "total": rep.total,
         "text": format_report(rep),
@@ -108,13 +107,11 @@ def _coverage_json(session: Session) -> dict:
 def _thread_safe_store(store: GlyphStore) -> GlyphStore:
     """Reopen `store` on a connection usable from the server's worker threads.
 
-    `GlyphStore.open` uses sqlite3's default `check_same_thread=True`, but FastAPI runs sync handlers in a
-    thread pool; every handler holds the app's lock, so access stays serialised.
+    FastAPI runs sync handlers in a thread pool, so the connection is opened with
+    `check_same_thread=False`; every handler holds the app's lock, so access stays serialised.
     """
-    conn = sqlite3.connect(store.root / "store.db", check_same_thread=False)
-    shared = GlyphStore(store.root, conn)
     store.close()
-    return shared
+    return GlyphStore.open(store.root, check_same_thread=False)
 
 
 def create_app(session: Session, now: Callable[[], str] | None = None) -> FastAPI:

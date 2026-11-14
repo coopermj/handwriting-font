@@ -32,7 +32,7 @@ def test_report_counts_and_order(store, inputs, stats, log, synth):
     assert rep.total == len(rep.lines) and rep.met_count == sum(l.met for l in rep.lines)
     unmet = [l for l in rep.lines if not l.met]
     assert list(rep.lines[: len(unmet)]) == sorted(unmet, key=lambda l: l.label)
-    assert ("Q", 1) in rep.untargeted
+    assert ("Q", Kind.single, 1) in rep.untargeted
     text = format_report(rep)
     assert text.splitlines()[0] == f"coverage: {rep.met_count}/{rep.total} targets met"
     assert f"a: 2/12 (+{pending_a} pending)" in text
@@ -48,3 +48,22 @@ def test_met_line_and_order(store, inputs, stats, log, synth):
     text = format_report(rep)
     assert f"a: 2/2 ✓ (+{a.pending} pending)" in text
     assert sum("✓" in ln for ln in text.splitlines()) == 1
+
+
+def test_untargeted_keyed_on_label_and_kind(store, inputs, stats, log, synth):  # I8
+    from review.decisions import reject
+
+    store.add_target(Target(label="th", kind=Kind.single, required_count=1))  # kind disagrees with the label
+    store.add_target(Target(label="a", kind=Kind.single, required_count=1))
+    th = _id_of(inputs, "th", 2)  # a ligature decision for "th"
+    rep = report(store, [log])
+    assert ("th", Kind.ligature, 1) in rep.untargeted  # kind mismatch surfaces
+    assert "th (ligature)×1" in format_report(rep)
+    q = _id_of(inputs, "c", 0)
+    log2, _ = apply(store, inputs, stats, log, synth.candidate_dir, lambda l: relabel(l, inputs, q, "Q", NOW), q)
+    assert ("Q", Kind.single, 1) in report(store, [log2]).untargeted
+    log3, _ = apply(store, inputs, stats, log2, synth.candidate_dir, lambda l: reject(l, q, NOW), q)
+    assert all(lab != "Q" for lab, _, _ in report(store, [log3]).untargeted)  # rejected excluded
+    two = report(store, [log2, log2]).untargeted  # two logs sum
+    assert ("Q", Kind.single, 2) in two and ("th", Kind.ligature, 2) in two
+    assert log.decisions[th].kind == Kind.ligature
