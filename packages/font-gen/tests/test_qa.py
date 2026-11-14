@@ -16,7 +16,7 @@ def test_severity_policy_is_the_spec_table():
     assert ERROR_CODES == {"empty_font", "store_invalid", "glyph_name_invalid", "feature_compile_failed", "reload_failed",
                            "metrics_inconsistent_binary", "shaping_check_failed", "output_exists"}
     assert len(WARN_CODES) == 22 and {"target_no_samples", "ring_singleton", "proof_png_failed", "baseline_nonzero"} <= WARN_CODES
-    assert len(INFO_CODES) == 16 and {"nib_width_assumed", "proof_png_skipped", "font_stats", "ligature_overlap"} <= INFO_CODES
+    assert len(INFO_CODES) == 17 and "output_path_normalized" in INFO_CODES and {"nib_width_assumed", "proof_png_skipped", "font_stats", "ligature_overlap"} <= INFO_CODES
     assert not (ERROR_CODES & WARN_CODES) and not (WARN_CODES & INFO_CODES)
     assert severity_of("empty_font") == "error" and severity_of("ring_short") == "info"
 

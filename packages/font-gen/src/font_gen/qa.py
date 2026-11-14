@@ -57,6 +57,7 @@ INFO_CODES = frozenset({
     "target_below_required", "ring_short", "ring_surplus", "ring_not_prime", "marginal_used", "bad_sample_excluded",
     "position_rederived", "ligature_restricted", "ligature_overlap", "dot_rendered", "stroke_degenerate",
     "outline_tiny_contour", "nib_width_assumed", "space_advance_assumed", "proof_png_skipped", "font_stats",
+    "output_path_normalized",
 })
 _SEVERITY_OF: dict[str, Severity] = {
     **{code: "error" for code in ERROR_CODES},

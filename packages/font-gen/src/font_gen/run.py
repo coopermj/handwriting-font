@@ -21,6 +21,7 @@ from hwfont_schema import EM_CONVENTION_VERSION, GlyphStore, Kind
 
 from font_gen.autotrace import raster_to_outline
 from font_gen.build import BuildMeta, build_font, build_ttf, head_timestamp
+from font_gen.centerline import SMOOTH_SIGMA
 from font_gen.features import generate_features, ligature_overlaps
 from font_gen.load import load_store
 from font_gen.metrics import collect_vertical, hmetrics, ligature_carets, lowercase_advances, metric_findings, space_advance
@@ -35,6 +36,7 @@ DEFAULT_CREATED_AT = "1970-01-01T00:00:00Z"
 BASELINE_TOL = 0.1
 DEMO_FAMILY = "Demo Hand"
 DEMO_STEM = "Demo"
+FORCE_HELP = "overwrite existing outputs"
 
 
 @dataclass(frozen=True)
@@ -45,7 +47,7 @@ class BuildOptions:
     ring_n: int = RING_N
     pos_min: int = POS_MIN
     space_em: float | None = None
-    smooth_sigma: float = 0.25
+    smooth_sigma: float = SMOOTH_SIGMA
     cycle_mode: str = "stream"
     ttf: bool = False
     created_at: str = DEFAULT_CREATED_AT
@@ -174,12 +176,24 @@ def run_build(store: GlyphStore, opts: BuildOptions) -> BuildResult:
 # ---------- output-path discipline ----------
 
 
+def normalized_otf(out: Path) -> tuple[Path, Finding | None]:
+    """Amendment 9: the font is always written to `out.with_suffix(".otf")`; any suffix other than `.otf` or none is
+    reported (`--out Hand.ttf --ttf` would otherwise map the OTF and the TTF to the same file)."""
+    otf = out.with_suffix(".otf")
+    if out.suffix in ("", ".otf"):
+        return otf, None
+    return otf, Finding("info", "output_path_normalized", f"wrote {otf} for --out {out}",
+                        data={"out": str(out), "otf": str(otf)})
+
+
 def output_paths(out: Path, *, ttf: bool, qa: Path | None, proof: Path | None, png: bool) -> dict[str, Path]:
-    paths = {"otf": out, "fea": out.with_suffix(".fea")}
+    """Every output path, siblings derived from the normalised `.otf`; explicit `qa`/`proof` paths are kept as given."""
+    otf, _ = normalized_otf(out)
+    paths = {"otf": otf, "fea": otf.with_suffix(".fea")}
     if ttf:
-        paths["ttf"] = out.with_suffix(".ttf")
-    paths["qa"] = qa or out.with_suffix(".qa.json")
-    paths["proof"] = proof or out.with_suffix(".proof.svg")
+        paths["ttf"] = otf.with_suffix(".ttf")
+    paths["qa"] = qa or otf.with_suffix(".qa.json")
+    paths["proof"] = proof or otf.with_suffix(".proof.svg")
     if png:
         paths["png"] = paths["proof"].with_suffix(".png")
     return paths
@@ -281,6 +295,9 @@ def build_command(args: argparse.Namespace) -> int:
         result = run_build(store, opts)
     finally:
         store.close()
+    _, normalized = normalized_otf(Path(args.out))
+    if normalized is not None:
+        result = replace(result, report=replace(result.report, findings=(*result.report.findings, normalized)))
     if result.plan is None:  # store_invalid: console only, nothing written
         print(summarize(result.report, None))
         return 1
@@ -291,7 +308,7 @@ def demo_command(args: argparse.Namespace) -> int:
     out_dir = Path(args.out)
     opts = BuildOptions(family=DEMO_FAMILY, ttf=args.ttf)
     paths = output_paths(out_dir / f"{DEMO_STEM}.otf", ttf=args.ttf, qa=None, proof=None, png=True)
-    refusal = check_outputs(list(paths.values()), False)
+    refusal = check_outputs(list(paths.values()), args.force)
     if refusal is not None:
         return _console_refusal(opts, refusal)
     with tempfile.TemporaryDirectory() as tmp:
@@ -381,13 +398,14 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--qa", default=None, help="QA report path (default <out>.qa.json)")
     b.add_argument("--strict", action="store_true", help="treat warnings as failures (exit 2, no font)")
     b.add_argument("--created-at", default=DEFAULT_CREATED_AT, help="ISO-8601 head timestamp")
-    b.add_argument("--force", action="store_true", help="overwrite existing outputs")
+    b.add_argument("--force", action="store_true", help=FORCE_HELP)
     b.set_defaults(func=build_command)
 
     d = sub.add_parser("demo", help="build a font from the synthetic demo store")
     d.add_argument("--out", required=True, help="output directory")
     d.add_argument("--seed", type=int, default=1)
     d.add_argument("--ttf", action="store_true")
+    d.add_argument("--force", action="store_true", help=FORCE_HELP)
     d.set_defaults(func=demo_command)
 
     p = sub.add_parser("proof", help="render a proof sheet from a built font")

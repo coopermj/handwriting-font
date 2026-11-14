@@ -261,3 +261,55 @@ def test_module_invocation_runs_the_cli(tmp_path, fixture_store, module):
     missing = subprocess.run([sys.executable, "-m", module, "build", "--store", str(tmp_path / "nope"), "--out", str(tmp_path / "X.otf")],
                              capture_output=True, text=True, timeout=60)
     assert missing.returncode == 1 and "No glyph store" in missing.stdout
+
+
+def test_output_paths_always_name_an_otf_and_keep_siblings_distinct(tmp_path):
+    from font_gen.run import check_outputs, normalized_otf, output_paths
+    for given in ("Hand", "Hand.ttf", "Hand.otf"):
+        assert output_paths(tmp_path / given, ttf=True, qa=None, proof=None, png=False)["otf"] == tmp_path / "Hand.otf"
+    paths = output_paths(tmp_path / "Hand.ttf", ttf=True, qa=None, proof=None, png=True)
+    assert paths == {"otf": tmp_path / "Hand.otf", "fea": tmp_path / "Hand.fea", "ttf": tmp_path / "Hand.ttf",
+                     "qa": tmp_path / "Hand.qa.json", "proof": tmp_path / "Hand.proof.svg", "png": tmp_path / "Hand.proof.png"}
+    assert len(set(paths.values())) == len(paths)
+    explicit = output_paths(tmp_path / "Hand", ttf=False, qa=tmp_path / "r.json", proof=tmp_path / "p.svg", png=False)
+    assert explicit["qa"] == tmp_path / "r.json" and explicit["proof"] == tmp_path / "p.svg"
+    (tmp_path / "Hand.otf").write_bytes(b"OLD")
+    (tmp_path / "Hand.ttf").write_bytes(b"OLD")
+    refusal = check_outputs(list(paths.values()), False)
+    assert refusal.data["paths"] == [str(tmp_path / "Hand.otf"), str(tmp_path / "Hand.ttf")]
+    assert normalized_otf(tmp_path / "Hand") == (tmp_path / "Hand.otf", None)
+    assert normalized_otf(tmp_path / "Hand.otf") == (tmp_path / "Hand.otf", None)
+    path, finding = normalized_otf(tmp_path / "Hand.ttf")
+    assert path == tmp_path / "Hand.otf" and finding.code == "output_path_normalized" and finding.severity == "info"
+    assert finding.message == f"wrote {tmp_path / 'Hand.otf'} for --out {tmp_path / 'Hand.ttf'}"
+
+
+def test_build_out_ttf_writes_distinct_otf_and_ttf(tmp_path, fixture_store, monkeypatch):
+    _absent(monkeypatch, "cairosvg")
+    assert main(["build", "--store", str(fixture_store.root), "--out", str(tmp_path / "Hand.ttf"), "--ttf"]) == 0
+    assert (tmp_path / "Hand.otf").read_bytes()[:4] == b"OTTO" and "glyf" in TTFont(io.BytesIO((tmp_path / "Hand.ttf").read_bytes()))
+    report = json.loads((tmp_path / "Hand.qa.json").read_text())
+    assert "output_path_normalized" in {f["code"] for f in report["findings"]}
+    assert str(tmp_path / "Hand.otf") in report["written"] and str(tmp_path / "Hand.ttf") in report["written"]
+    assert main(["build", "--store", str(fixture_store.root), "--out", str(tmp_path / "Bare")]) == 0
+    assert (tmp_path / "Bare.otf").exists() and not (tmp_path / "Bare").exists()
+    assert "output_path_normalized" not in _codes(tmp_path / "Bare.qa.json")
+
+
+def test_demo_force_overwrites_and_its_absence_refuses(tmp_path, capsys):
+    assert main(["demo", "--out", str(tmp_path)]) == 0
+    (tmp_path / "Demo.otf").write_bytes(b"OLD")
+    capsys.readouterr()
+    assert main(["demo", "--out", str(tmp_path)]) == 1 and "output_exists" in capsys.readouterr().out
+    assert (tmp_path / "Demo.otf").read_bytes() == b"OLD"
+    assert main(["demo", "--out", str(tmp_path), "--force"]) == 0
+    assert (tmp_path / "Demo.otf").read_bytes()[:4] == b"OTTO"
+    help_text = {a.dest: a.help for a in run_mod.build_parser()._subparsers._group_actions[0].choices["demo"]._actions}
+    build_help = {a.dest: a.help for a in run_mod.build_parser()._subparsers._group_actions[0].choices["build"]._actions}
+    assert help_text["force"] == build_help["force"]
+
+
+def test_build_options_smooth_sigma_is_the_centerline_constant():
+    from font_gen.centerline import SMOOTH_SIGMA
+    assert run_mod.BuildOptions().smooth_sigma == SMOOTH_SIGMA
+    assert run_mod.build_parser().parse_args(["build", "--store", "s", "--out", "o"]).smooth_sigma == SMOOTH_SIGMA
