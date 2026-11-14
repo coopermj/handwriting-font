@@ -21,7 +21,9 @@ Python 3.12+ is required; Homebrew's `python3.14` is known to work (3.15 lacks a
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/python -m pip install -e "packages/hwfont-schema[dev]" -e "packages/capture-template[dev]" -e "packages/ingest-segment[dev]"
+.venv/bin/python -m pip install -e "packages/hwfont-schema[dev]" -e "packages/capture-template[dev]" -e "packages/ingest-segment[dev]" -e "packages/font-gen[dev,raster]"
 ```
 
 Run a package's tests from its directory, e.g. `cd packages/capture-template && ../../.venv/bin/python -m pytest -q`.
+
+Build the synthetic demo font with `font-gen demo --out some/dir --ttf` and open the `.proof.svg` it writes beside the font. How each host (browsers, Word) handles variant cycling across spaces is in [docs/font-gen-hosts.md](docs/font-gen-hosts.md).
