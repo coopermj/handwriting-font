@@ -97,7 +97,7 @@ Pure operations (`ReviewLog → ReviewLog`, never mutate; unknown id → `Review
 - `accept(log, id, now, quality=None)` — status `accepted`, quality from the argument or the decision's current quality.
 - `reject(log, id, now)` — status `rejected`.
 - `relabel(log, id, label, now)` — `label` must be non-empty with no whitespace; `kind` follows the length rule. Context is kept (the word and neighbours come from the transcript, not from the label). A label that does not occur in the region's `expected_units`/`ligature_targets` gets flag `label_not_expected`. An accepted candidate stays accepted (the store is re-mirrored).
-- `adjust_box(log, id, bbox, now)` — the box must lie inside its region's bbox (page px) and have positive size; otherwise `ReviewError`. An accepted candidate stays accepted (re-mirrored).
+- `adjust_box(log, id, bbox, now)` — the box must have positive size, lie within the page (`0 ≤ x`, `x + w ≤ width_px`, likewise y) and intersect its region's bbox; otherwise `ReviewError`. (Ruling 2026-11-14: "fully inside the region" was withdrawn — descenders and nudged boxes legitimately extend into the inter-row gap, and ingest's own boxes may overhang the ruled row.) An accepted candidate stays accepted (re-mirrored).
 - `set_quality(log, id, quality, now)`.
 - `reset(log, id, now)` — back to the candidate's original label/box, status `pending`.
 
