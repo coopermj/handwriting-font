@@ -59,6 +59,7 @@ POINT_Y = (-0.6, 1.4)
 ADVANCE_MAX = 2.5
 BASELINE_ABS = 0.1
 BBOX_TOL = 0.005
+WIDTH_MAX = 0.2
 RASTER_MIN_PX_PER_EM = 32
 RASTER_SCALE_TOL = 0.02
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -129,6 +130,9 @@ def check_sample_em(
     n_none = sum(p.pressure is None for p in points)
     if 0 < n_none < len(points):
         out.append(f"pressure_mixed: {n_none} of {len(points)} points have no pressure")
+    for p in points:
+        if p.width is not None and not (0 < p.width <= WIDTH_MAX):
+            out.append(f"width_range: width {p.width:.4f} outside (0, {WIDTH_MAX}] em")
     if raster is not None:
         out.extend(_check_raster(m.bbox, raster))
     return out

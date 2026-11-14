@@ -113,3 +113,12 @@ def test_raster_pixel_em_round_trip_with_pad():
     assert raster_px_to_em(0.0, 0.0, bbox, scale) == pytest.approx((0.0, 0.55), abs=1e-9)  # top-left = (bbox.x - pad, bbox.y + h + pad)
     x, y = raster_em_to_px(0.3, 0.1, bbox, scale)
     assert raster_px_to_em(x, y, bbox, scale) == pytest.approx((0.3, 0.1), abs=1e-9)
+
+
+def test_width_must_be_in_0_to_0_2_em():
+    def with_width(w):
+        return StrokeData(contours=[Contour(points=[StrokePoint(x=0.05, y=0.0, width=w), StrokePoint(x=0.55, y=0.5, width=w)])])
+    assert check_sample_em(_sample(), with_width(0.05)) == []
+    assert check_sample_em(_sample(), with_width(0.2)) == []
+    assert _codes(check_sample_em(_sample(), with_width(0.0))) == {"width_range"}
+    assert _codes(check_sample_em(_sample(), with_width(0.25))) == {"width_range"}

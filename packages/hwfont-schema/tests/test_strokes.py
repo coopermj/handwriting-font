@@ -27,3 +27,14 @@ def test_stroke_data_round_trips_through_json():
     )
     restored = StrokeData.model_validate_json(data.model_dump_json())
     assert restored == data
+
+
+def test_stroke_point_width_optional_and_round_trips():
+    assert StrokePoint(x=0, y=0).width is None
+    p = StrokePoint(x=0, y=0, width=0.05)
+    assert StrokePoint.model_validate_json(p.model_dump_json()) == p
+
+
+def test_existing_json_without_width_still_validates():
+    restored = StrokeData.model_validate_json('{"contours":[{"points":[{"x":0,"y":0},{"x":1,"y":1}]}]}')
+    assert restored.contours[0].points[0].width is None
