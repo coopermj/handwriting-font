@@ -117,6 +117,11 @@ def test_index_and_static(client):
     js = client.get("/static/app.js")
     assert js.status_code == 200
     assert js.headers["content-type"].split(";")[0] in ("text/javascript", "application/javascript")
+    # I6/I7 and UI minors (no JS test runner here; behaviour was checked in a browser): pin the mechanisms
+    for needle in ("queue = p", "enqueue(refreshCoverage)", "setPointerCapture", "DRAG_PX = 4", "n: advance",
+                   "labelInput.value = state.cands[i].decision.label", "sel.blur()"):
+        assert needle in js.text, needle
+    assert "<kbd>n</kbd> next pending" in r.text
 
 
 def test_session_json_carries_inconsistencies(tmp_path, synth):  # I5

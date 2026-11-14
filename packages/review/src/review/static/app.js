@@ -12,6 +12,7 @@
   const HANDLE_PX = 8;     // handle size on screen
   const HIT_PX = 6;        // extra hit slop on screen
   const PAD_PX = 16;       // canvas-wrap padding
+  const DRAG_PX = 4;       // screen px a press must travel before it becomes a drag
 
   const state = {
     session: null,
@@ -20,8 +21,17 @@
     cur: -1,               // index into cands
     image: null,
     scale: 1,
-    drag: null,            // {mode, handle, start:{x,y}, orig:{x,y,w,h}, box:{x,y,w,h}}
+    drag: null,            // {mode, start:{x,y}, screen:{x,y}, orig:{x,y,w,h}, box:{x,y,w,h}, moved, pointerId}
   };
+
+  // every mutating request (and the coverage refresh after it) runs through this one chain, in order;
+  // a failed request shows its error inline and the chain carries on
+  let queue = Promise.resolve();
+  function enqueue(task) {
+    const p = queue.then(task).catch((e) => setStatus(e.message, true));
+    queue = p;
+    return p;
+  }
 
   const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const colours = {};
@@ -81,7 +91,7 @@
       sel.appendChild(o);
     }
     sel.hidden = s.pages.length < 2;
-    sel.addEventListener("change", () => showPage(sel.value));
+    sel.addEventListener("change", () => { sel.blur(); showPage(sel.value); });
     if (s.pages.length) await showPage(s.pages[0].id);
     refreshCoverage();
   }
@@ -91,7 +101,7 @@
     state.page = page;
     state.cands = page.candidates;
     state.cur = state.cands.length ? 0 : -1;
-    state.drag = null;
+    cancelDrag();
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => { state.image = img; fit(); renderPanel(); resolve(); };
@@ -254,11 +264,15 @@
     return el;
   }
 
-  function renderPanel() {
-    const c = current();
+  function renderProgress() {
     const total = state.cands.length;
     const done = state.cands.filter((x) => x.decision.status !== "pending").length;
     $("progress").textContent = total ? `${state.cur + 1} / ${total} · ${done} reviewed` : "no candidates";
+  }
+
+  function renderPanel() {
+    const c = current();
+    renderProgress();
     const crop = $("crop");
     crop.innerHTML = "";
     if (!c) {
@@ -316,8 +330,10 @@
 
   function select(i, scroll) {
     if (i < 0 || i >= state.cands.length) return;
+    cancelDrag();
     state.cur = i;
-    state.drag = null;
+    labelInput.value = state.cands[i].decision.label;
+    labelInput.blur();
     renderPanel();
     if (scroll) scrollIntoView(boxOf(state.cands[i]));
   }
@@ -330,6 +346,21 @@
     else if (bottom + m > wrap.scrollTop + wrap.clientHeight) wrap.scrollTop = bottom + m - wrap.clientHeight;
     if (left - m < wrap.scrollLeft) wrap.scrollLeft = left - m;
     else if (right + m > wrap.scrollLeft + wrap.clientWidth) wrap.scrollLeft = right + m - wrap.clientWidth;
+  }
+
+  // the next candidate after the current one (wrapping) whose decision is pending; -1 when none
+  function nextPending() {
+    const n = state.cands.length;
+    for (let k = 1; k < n; k++) {
+      const i = (state.cur + k) % n;
+      if (state.cands[i].decision.status === "pending") return i;
+    }
+    return -1;
+  }
+
+  function advance() {
+    const i = nextPending();
+    if (i >= 0) select(i, true);
   }
 
   // ---------------------------------------------------------------- coverage
@@ -375,22 +406,21 @@
 
   // ---------------------------------------------------------------- actions
 
-  async function act(action, body, cand) {
+  function act(action, body, cand) {
     const c = cand || current();
-    if (!c) return;
-    try {
+    if (!c) return Promise.resolve();
+    const done = enqueue(async () => {
       const d = await api("POST", `/api/candidate/${encodeURIComponent(c.id)}/${action}`, body);
       c.decision = d;
       setStatus(`${action}: ${c.id} ‘${d.label}’ → ${d.status}${d.flags.length ? " (flagged)" : ""}`);
-    } catch (e) {
-      setStatus(e.message, true);
-    }
-    if (c === current()) renderPanel(); else draw();
-    refreshCoverage();
+    }).then(() => { if (c === current()) renderPanel(); else { renderProgress(); draw(); } });
+    enqueue(refreshCoverage);
+    return done;
   }
 
-  const accept = () => act("accept");
-  const rejectCur = () => act("reject");
+  // a and r move on to the next pending candidate at once; the request keeps its own candidate
+  const accept = () => { if (current()) { act("accept"); advance(); } };
+  const rejectCur = () => { if (current()) { act("reject"); advance(); } };
   const resetCur = () => act("reset");
   const setQuality = (q) => act("quality", { quality: q });
 
@@ -405,7 +435,15 @@
 
   // ---------------------------------------------------------------- mouse
 
-  canvas.addEventListener("mousedown", (ev) => {
+  function cancelDrag() {
+    const dr = state.drag;
+    if (!dr) return;
+    state.drag = null;
+    try { canvas.releasePointerCapture(dr.pointerId); } catch (_) { /* already released */ }
+    draw();
+  }
+
+  canvas.addEventListener("pointerdown", (ev) => {
     if (ev.button !== 0 || !state.page) return;
     const p = toPage(ev);
     const c = current();
@@ -413,7 +451,11 @@
       const b = c.decision.bbox;
       const h = handleAt(p, b);
       if (h || inside(p, b)) {
-        state.drag = { mode: h || "move", start: p, orig: { ...b }, box: { ...b }, moved: false };
+        state.drag = {
+          mode: h || "move", start: p, screen: { x: ev.clientX, y: ev.clientY },
+          orig: { ...b }, box: { ...b }, moved: false, pointerId: ev.pointerId,
+        };
+        canvas.setPointerCapture(ev.pointerId);
         ev.preventDefault();
         return;
       }
@@ -422,7 +464,7 @@
     if (i >= 0) select(i, false);
   });
 
-  window.addEventListener("mousemove", (ev) => {
+  canvas.addEventListener("pointermove", (ev) => {
     if (!state.page) return;
     const p = toPage(ev);
     const dr = state.drag;
@@ -438,6 +480,8 @@
       canvas.style.cursor = cursor;
       return;
     }
+    if (!dr.moved && Math.hypot(ev.clientX - dr.screen.x, ev.clientY - dr.screen.y) < DRAG_PX) return;
+    dr.moved = true;
     const dx = p.x - dr.start.x, dy = p.y - dr.start.y;
     const o = dr.orig;
     let x0 = o.x, y0 = o.y, x1 = o.x + o.w, y1 = o.y + o.h;
@@ -452,20 +496,26 @@
     if (x1 - x0 < min) { if (dr.mode.includes("w")) x0 = x1 - min; else x1 = x0 + min; }
     if (y1 - y0 < min) { if (dr.mode.includes("n")) y0 = y1 - min; else y1 = y0 + min; }
     dr.box = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
-    dr.moved = dr.moved || Math.abs(dx) * state.scale > 1 || Math.abs(dy) * state.scale > 1;
     draw();
   });
 
-  window.addEventListener("mouseup", () => {
+  canvas.addEventListener("pointerup", (ev) => {
     const dr = state.drag;
     if (!dr) return;
     const c = current();
-    state.drag = null;
-    if (!dr.moved || !c) { draw(); return; }
+    cancelDrag();
+    if (!dr.moved || !c) {
+      // a press without movement inside the current box: select the smallest box under it (nested boxes)
+      const i = candidateAt(toPage(ev));
+      if (i >= 0 && i !== state.cur) select(i, false);
+      return;
+    }
     const r = (n) => Math.round(n * 10) / 10;
     const b = dr.box;
     act("box", { x: r(b.x), y: r(b.y), w: Math.max(0.1, r(b.w)), h: Math.max(0.1, r(b.h)) }, c);
   });
+
+  canvas.addEventListener("pointercancel", cancelDrag);
 
   // ---------------------------------------------------------------- keyboard and controls
 
@@ -480,6 +530,7 @@
   });
 
   document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && state.drag) { ev.preventDefault(); cancelDrag(); return; }
     if (document.activeElement === labelInput) return;
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
     if (document.activeElement && document.activeElement.tagName === "SELECT") return;
@@ -489,7 +540,14 @@
       x: resetCur,
       j: () => select(state.cur + 1, true),
       k: () => select(state.cur - 1, true),
-      e: () => { if (current()) { labelInput.focus(); labelInput.select(); } },
+      n: advance,
+      e: () => {
+        const c = current();
+        if (!c) return;
+        labelInput.value = c.decision.label;
+        labelInput.focus();
+        labelInput.select();
+      },
       g: () => setQuality("good"),
       m: () => setQuality("marginal"),
       b: () => setQuality("bad"),
