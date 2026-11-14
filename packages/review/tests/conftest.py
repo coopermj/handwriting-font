@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 from hwfont_schema import GlyphStore
 
+from review.inputs import ReviewInputs, load_inputs
 from synth_page import SynthPage, synth_page
 
 NOW = "2026-11-14T10:00:00Z"
@@ -26,11 +25,14 @@ def store(tmp_path):
     s.close()
 
 
-def _id_of(inputs: Any, label: str, region: int) -> str:
+@pytest.fixture
+def inputs(synth) -> ReviewInputs:
+    return load_inputs(synth.sidecar_path, [synth.candidate_dir], {"p0": synth.raster_path})
+
+
+def _id_of(inputs: ReviewInputs, label: str, region: int) -> str:
     """Id of the leftmost (original bbox.x) candidate labelled `label` in page p0's region `region`.
 
-    `inputs` is a ReviewInputs (defined in a later task): anything with
-    `.pages["p0"].candidates: dict[str, Candidate]` and `.pages["p0"].page.regions`.
     """
     pg = inputs.pages["p0"]
     region_id = pg.page.regions[region].id
