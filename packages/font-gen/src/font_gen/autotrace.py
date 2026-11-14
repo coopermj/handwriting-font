@@ -11,7 +11,7 @@ from PIL import Image
 
 from font_gen.centerline import SMOOTH_SIGMA, resample, smooth
 from font_gen.nib import NIB
-from font_gen.outline import Outline, OutlineResult, check_outline, fit_outline, route_findings
+from font_gen.outline import TINY_FACTOR, Outline, OutlineResult, check_outline, fit_outline, route_findings
 from font_gen.qa import Finding
 
 QU2CU_ERR_RASTER = 1.5
@@ -62,6 +62,11 @@ def georeference(polygon_px: np.ndarray, bbox: BBox, scale: float, baseline: flo
     return out
 
 
+def shoelace_area(pts: np.ndarray) -> float:
+    x, y = pts[:, 0], pts[:, 1]
+    return 0.5 * float(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
+
+
 def raster_to_outline(
     raster: bytes,
     metrics: Metrics,
@@ -79,11 +84,14 @@ def raster_to_outline(
     bbox = metrics.bbox
     width_px, _ = png_size(raster)
     scale = width_px / (bbox.w + 2 * RASTER_PAD)
+    speck = (TINY_FACTOR * nib) ** 2
     path = pathops.Path()
     pen = path.getPen()
     for polygon in raster_polygons(ink_mask(raster)):
         pts = georeference(polygon, bbox, scale, metrics.baseline)
         pts = smooth(resample(pts, closed=True), smooth_sigma * nib, closed=True)
+        if abs(shoelace_area(pts)) < speck:  # a binarisation pinhole or speck: no pen leaves a mark this small
+            continue
         pen.moveTo(tuple(pts[0]))
         for p in pts[1:]:
             pen.lineTo(tuple(p))

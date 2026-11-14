@@ -255,9 +255,9 @@ def fit_outline(union_path: pathops.Path, max_err: float = QU2CU_ERR) -> tuple[O
     for _ in range(FIXED_POINT_ROUNDS):
         q = outline_to_path(candidate)
         q.simplify(fix_winding=True, keep_starting_points=True, clockwise=False)
-        rec = RecordingPen()
-        q.draw(rec)
-        candidate = Outline.from_recording(rec.value)
+        pen = _ElevationPen()  # simplify may re-emit quadratics: elevate them exactly, as the route above does
+        q.draw(pen)
+        candidate = Outline.from_recording(pen.value)
         if is_intersection_free(candidate) and drift_ok(candidate, union_path):
             return candidate, "fixed_point"
     return candidate, "unstable"

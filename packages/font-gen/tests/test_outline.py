@@ -243,3 +243,11 @@ def test_draw_round_trip_notdef_and_determinism():
     s = _strokes(_pts(_circle()))
     a, b = outline_from_strokes(s, _metrics(x=0.1, y=0.1, w=0.4, h=0.4)), outline_from_strokes(s, _metrics(x=0.1, y=0.1, w=0.4, h=0.4))
     assert a.outline == b.outline
+
+
+def test_fixed_point_route_elevates_the_quadratics_simplify_emits():
+    from font_gen.synth import synth_sample
+    sample, strokes, _ = synth_sample("B", "medi", 2, 1)   # qu2cu and elevation both fail their checks on this one
+    res = outline_from_strokes(strokes, sample.metrics)
+    assert res.route == "fixed_point"
+    assert all(seg[0] in ("line", "curve") for c in res.outline.contours for seg in c.segments)

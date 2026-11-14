@@ -73,3 +73,12 @@ def test_route_findings_maps_degraded_routes():
     assert [f.code for f in route_findings("unstable", {})] == ["outline_unstable"]
     assert [f.code for f in route_findings("empty", {})] == ["outline_empty"]
     assert route_findings("qu2cu", {}) == []
+
+
+def test_binarisation_pinholes_are_despeckled():
+    """Two nearly-touching strokes leave a few-pixel hole in the raster; smoothed, it collapses to a sub-unit contour."""
+    from font_gen.synth import synth_sample
+    sample, _, png = synth_sample("q", "medi", 0, 1)   # the generic Lissajous q: 3.5 px² pinhole at a crossing
+    res = raster_to_outline(png, sample.metrics)
+    assert "outline_tiny_contour" not in {f.code for f in res.findings}
+    assert min(abs(a) for a in res.outline.contour_areas()) > 182.25   # (TINY_FACTOR * NIB)²

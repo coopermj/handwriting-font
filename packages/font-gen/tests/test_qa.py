@@ -148,3 +148,9 @@ def test_period_rows_need_a_transparent_period(tmp_path):
     texts = [e.text for e in exps]
     assert "a. a" in texts and "a...a" in texts
     assert [(e.text, check_expectation(font, e)) for e in exps if check_expectation(font, e)] == []
+
+
+def test_word_cycle_mode_expects_the_counter_to_restart_at_every_word(fixture_plan):
+    word = shaping_expectations(fixture_plan, "word")
+    assert any(e.mode == "ends_equal" and e.text == "a a" for e in word)
+    assert not any(e.mode == "ends_distinct" for e in word)   # no @TRANSPARENT rules in --cycle-mode word

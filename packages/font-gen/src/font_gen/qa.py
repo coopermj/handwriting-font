@@ -239,7 +239,7 @@ def _probe_words(probe: str, core: str) -> dict[Pos, str]:
     return {"medi": probe + core + probe, "fina": probe + core, "init": core + probe, "isol": core}
 
 
-def shaping_expectations(plan: GlyphPlan) -> list[Expectation]:
+def shaping_expectations(plan: GlyphPlan, cycle_mode: str = "stream") -> list[Expectation]:
     from font_gen.features import ligature_overlaps, resolve_ligatures
     from font_gen.naming import POS_ORDER, base_name
 
@@ -294,14 +294,17 @@ def shaping_expectations(plan: GlyphPlan) -> list[Expectation]:
     cmapped = {chr(cp) for cp in plan.cmap}
     first = next((lab for (lab, pos), ring in sorted(plan.rings.items(), key=lambda kr: kr[0][0])
                   if pos is None and len(lab) == 1 and lab.isalpha() and len(ring) >= 2 and lab in cmapped), None)
-    if first is not None:
-        rows: list[tuple[str, Mode, str]] = [(f"{first} {first}", "ends_distinct", "skip depth 1")]
+    rows: list[tuple[str, Mode, str]] = []
+    if first is not None and cycle_mode == "word":  # no @TRANSPARENT rules: the counter restarts at every word
+        rows.append((f"{first} {first}", "ends_equal", "word-mode reset"))
+    elif first is not None:
+        rows.append((f"{first} {first}", "ends_distinct", "skip depth 1"))
         if "." in cmapped and base_name(".") in plan.transparent:
             rows.append((f"{first}. {first}", "ends_distinct", "skip depth 2"))
             rows.append((f"{first}...{first}", "ends_equal", "depth-3 reset"))
-        for text, mode, note in rows:
-            if all(ch in cmapped for ch in text):
-                exps.append(Expectation(text, (), mode, None, note))
+    for text, mode, note in rows:
+        if all(ch in cmapped for ch in text):
+            exps.append(Expectation(text, (), mode, None, note))
 
     # with every feature off, every cmap'd character shapes to its base glyph
     for cp in sorted(plan.cmap):
@@ -452,6 +455,7 @@ def self_check(
     ts: int,
     *,
     is_ttf: bool = False,
+    cycle_mode: str = "stream",
 ) -> list[Finding]:
     """Spec §11 steps 1–6 on the font bytes; every step's crash becomes that step's finding, never an exception."""
     findings: list[Finding] = []
@@ -505,7 +509,7 @@ def self_check(
 
     # 5. the generated HarfBuzz expectation suite
     try:
-        failures = [m for e in shaping_expectations(plan) if (m := check_expectation(font_bytes, e)) is not None]
+        failures = [m for e in shaping_expectations(plan, cycle_mode) if (m := check_expectation(font_bytes, e)) is not None]
         if failures:
             findings.append(Finding("error", "shaping_check_failed",
                                     f"{len(failures)} shaping expectation(s) failed; first: {failures[0]}",
