@@ -188,3 +188,21 @@ def test_load_raster_raises_when_sidecar_file_is_gone(tmp_path: Path):
     with pytest.raises(FileNotFoundError):
         store.load_raster(stored)
     store.close()
+
+
+def test_get_sample_returns_none_when_absent(tmp_path):
+    store = GlyphStore.create(tmp_path / "store")
+    assert store.get_sample("nope") is None
+    stored = store.add_sample(_sample("s1", "a"), strokes=_strokes(), raster=b"\x89PNG_fake")
+    assert store.get_sample("s1") == stored
+
+
+def test_remove_sample_deletes_row_and_sidecars(tmp_path):
+    store = GlyphStore.create(tmp_path / "store")
+    store.add_sample(_sample("s1", "a"), strokes=_strokes(), raster=b"\x89PNG_fake")
+    assert store.remove_sample("s1") is True
+    assert store.get_sample("s1") is None
+    assert not (tmp_path / "store" / "strokes" / "s1.json").exists()
+    assert not (tmp_path / "store" / "raster" / "s1.png").exists()
+    assert store.coverage() == [] and store.all_samples() == []
+    assert store.remove_sample("s1") is False

@@ -139,6 +139,29 @@ class GlyphStore:
             ).fetchall()
         return [Sample.model_validate_json(row[0]) for row in rows]
 
+    def get_sample(self, sample_id: str) -> Sample | None:
+        """The sample with this id, or None when absent."""
+        row = self._conn.execute(
+            "SELECT data FROM sample WHERE id = ?", (sample_id,)
+        ).fetchone()
+        return Sample.model_validate_json(row[0]) if row is not None else None
+
+    def remove_sample(self, sample_id: str) -> bool:
+        """Delete a sample's row and sidecar files; False (no-op) when the id is absent."""
+        sample = self.get_sample(sample_id)
+        if sample is None:
+            return False
+        try:
+            self._conn.execute("DELETE FROM sample WHERE id = ?", (sample_id,))
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
+        for rel in (sample.strokes_path, sample.raster_path):
+            if rel is not None:
+                (self.root / rel).unlink(missing_ok=True)
+        return True
+
     def load_strokes(self, sample: Sample) -> StrokeData | None:
         """Read a sample's stroke sidecar, or None when the sample has no stroke data."""
         if sample.strokes_path is None:
