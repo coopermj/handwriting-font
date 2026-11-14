@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from review.coverage import CoverageLine, CoverageReport, format_report, report
 from review.decisions import (
     LOG_NAME,
     Decision,
@@ -64,6 +65,8 @@ from review.store_sync import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "CoverageLine",
+    "CoverageReport",
     "ADVANCE_CLAMP",
     "HALF_GAP_DEFAULT",
     "INK_THRESHOLD",
@@ -101,6 +104,7 @@ __all__ = [
     "default_decision",
     "default_log",
     "em_y",
+    "format_report",
     "ink_mask",
     "load_inputs",
     "load_log",
@@ -113,6 +117,7 @@ __all__ = [
     "relabel",
     "replay",
     "resample_raster",
+    "report",
     "reset",
     "sample_id",
     "save_log",
