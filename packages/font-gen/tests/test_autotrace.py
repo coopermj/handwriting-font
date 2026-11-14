@@ -53,3 +53,23 @@ def test_no_conic_to_in_autotrace():
     import inspect
     import font_gen.autotrace
     assert "conic" + "To" not in inspect.getsource(font_gen.autotrace)   # the same pin test_outline applies to centerline/outline
+
+
+def test_blank_png_emits_outline_empty_alongside_raster_fallback():
+    img = Image.new("L", (154, 154), 255)
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    res = raster_to_outline(buf.getvalue(), METRICS, label="blank")
+    codes = {f.code for f in res.findings}
+    assert res.route == "empty"
+    assert {"raster_fallback", "outline_empty"} <= codes
+
+
+def test_route_findings_maps_degraded_routes():
+    from font_gen.outline import route_findings
+
+    assert [f.code for f in route_findings("elevation", {})] == ["outline_fit_fallback"]
+    assert [f.code for f in route_findings("fixed_point", {})] == ["outline_fit_fallback"]
+    assert [f.code for f in route_findings("unstable", {})] == ["outline_unstable"]
+    assert [f.code for f in route_findings("empty", {})] == ["outline_empty"]
+    assert route_findings("qu2cu", {}) == []

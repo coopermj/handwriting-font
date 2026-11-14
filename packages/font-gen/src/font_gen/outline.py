@@ -298,6 +298,18 @@ class OutlineResult:
     route: str
 
 
+def route_findings(route: str, ctx: dict) -> list[Finding]:
+    """Spec 7.5 step 5: warn findings for a degraded fit route (shared by stroke and raster paths)."""
+    if route in ("elevation", "fixed_point"):
+        return [Finding("warn", "outline_fit_fallback", f"qu2cu outline failed its checks; shipped the {route} fallback",
+                        data={"route": route}, **ctx)]
+    if route == "unstable":
+        return [Finding("warn", "outline_unstable", "simplify fixed point did not converge; last candidate shipped", **ctx)]
+    if route == "empty":
+        return [Finding("warn", "outline_empty", "stroke union has zero area; empty glyph emitted", **ctx)]
+    return []
+
+
 def outline_from_strokes(
     strokes: StrokeData,
     metrics: Metrics,
@@ -338,13 +350,7 @@ def outline_from_strokes(
         outline, route = Outline.empty(), "empty"
     else:
         outline, route = fit_outline(union_pieces(pieces))
-        if route in ("elevation", "fixed_point"):
-            findings.append(Finding("warn", "outline_fit_fallback", f"qu2cu outline failed its checks; shipped the {route} fallback",
-                                    data={"route": route}, **ctx))
-        elif route == "unstable":
-            findings.append(Finding("warn", "outline_unstable", "simplify fixed point did not converge; last candidate shipped", **ctx))
-        elif route == "empty":
-            findings.append(Finding("warn", "outline_empty", "stroke union has zero area; empty glyph emitted", **ctx))
+        findings.extend(route_findings(route, ctx))
     findings.extend(check_outline(outline, metrics, nib, **ctx))
     return OutlineResult(outline=outline, findings=tuple(findings), tier=tier, route=route)
 

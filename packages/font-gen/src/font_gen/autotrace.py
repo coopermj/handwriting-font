@@ -11,7 +11,7 @@ from PIL import Image
 
 from font_gen.centerline import SMOOTH_SIGMA, resample, smooth
 from font_gen.nib import NIB
-from font_gen.outline import Outline, OutlineResult, check_outline, fit_outline
+from font_gen.outline import Outline, OutlineResult, check_outline, fit_outline, route_findings
 from font_gen.qa import Finding
 
 QU2CU_ERR_RASTER = 1.5
@@ -91,5 +91,6 @@ def raster_to_outline(
     path.simplify(fix_winding=True, keep_starting_points=False, clockwise=False)
     outline, route = fit_outline(path, max_err=QU2CU_ERR_RASTER)
     findings = [Finding("warn", "raster_fallback", "no usable strokes; outline traced from the raster", **ctx)]
+    findings.extend(route_findings(route, ctx))
     findings.extend(check_outline(outline, metrics, nib, **ctx))
     return OutlineResult(outline=outline, findings=tuple(findings), tier="D", route=route)
