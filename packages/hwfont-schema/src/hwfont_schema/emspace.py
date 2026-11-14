@@ -47,7 +47,9 @@ Because advances are built from half-gaps, consecutive advances are additive: th
 
 from __future__ import annotations
 
-from hwfont_schema.sample import Sample
+import struct
+
+from hwfont_schema.sample import BBox, Sample
 from hwfont_schema.strokes import StrokeData
 
 EM_CONVENTION_VERSION = 1
@@ -57,6 +59,39 @@ POINT_Y = (-0.6, 1.4)
 ADVANCE_MAX = 2.5
 BASELINE_ABS = 0.1
 BBOX_TOL = 0.005
+RASTER_MIN_PX_PER_EM = 32
+RASTER_SCALE_TOL = 0.02
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+def png_size(data: bytes) -> tuple[int, int]:
+    """(width, height) from the IHDR chunk; ValueError when the PNG signature is missing."""
+    if data[:8] != _PNG_SIGNATURE or len(data) < 24:
+        raise ValueError("not a PNG: missing signature or truncated IHDR")
+    width, height = struct.unpack(">II", data[16:24])
+    return width, height
+
+
+def raster_px_to_em(col: float, row: float, bbox: BBox, scale: float) -> tuple[float, float]:
+    """Raster pixel (0, 0 = top-left, y down) to em space (y up)."""
+    return bbox.x - RASTER_PAD + col / scale, bbox.y + bbox.h + RASTER_PAD - row / scale
+
+
+def raster_em_to_px(x: float, y: float, bbox: BBox, scale: float) -> tuple[float, float]:
+    """Em space (y up) to raster pixel (col, row); inverse of raster_px_to_em."""
+    return (x - bbox.x + RASTER_PAD) * scale, (bbox.y + bbox.h + RASTER_PAD - y) * scale
+
+
+def _check_raster(bbox: BBox, raster: bytes | tuple[int, int]) -> list[str]:
+    w, h = png_size(raster) if isinstance(raster, bytes) else raster
+    sx = w / (bbox.w + 2 * RASTER_PAD)
+    sy = h / (bbox.h + 2 * RASTER_PAD)
+    out: list[str] = []
+    if abs(sx - sy) / max(sx, sy) > RASTER_SCALE_TOL:
+        out.append(f"raster_scale_mismatch: x scale {sx:.1f} vs y scale {sy:.1f} px/em (tol {RASTER_SCALE_TOL:.0%})")
+    if min(sx, sy) < RASTER_MIN_PX_PER_EM:
+        out.append(f"raster_resolution: {min(sx, sy):.1f} px/em < {RASTER_MIN_PX_PER_EM}")
+    return out
 
 
 def check_sample_em(
@@ -74,6 +109,8 @@ def check_sample_em(
     if abs(m.baseline) > BASELINE_ABS:
         out.append(f"baseline_range: baseline {m.baseline} outside [-{BASELINE_ABS}, {BASELINE_ABS}]")
     if strokes is None:
+        if raster is not None:
+            out.extend(_check_raster(m.bbox, raster))
         return out
 
     points = [p for c in strokes.contours for p in c.points]
@@ -92,4 +129,6 @@ def check_sample_em(
     n_none = sum(p.pressure is None for p in points)
     if 0 < n_none < len(points):
         out.append(f"pressure_mixed: {n_none} of {len(points)} points have no pressure")
+    if raster is not None:
+        out.extend(_check_raster(m.bbox, raster))
     return out

@@ -1,5 +1,17 @@
+import struct
+import zlib
+
+import pytest
+
 from hwfont_schema import BBox, Context, Contour, Kind, Metrics, PositionInWord, Quality, ReviewStatus, Sample, StrokeData, StrokePoint
-from hwfont_schema.emspace import EM_CONVENTION_VERSION, RASTER_PAD, check_sample_em
+from hwfont_schema.emspace import (
+    EM_CONVENTION_VERSION,
+    RASTER_PAD,
+    check_sample_em,
+    png_size,
+    raster_em_to_px,
+    raster_px_to_em,
+)
 
 
 def _sample(baseline=0.0, x_height=0.45, advance=0.6, bbox=BBox(x=0.05, y=0.0, w=0.5, h=0.5)):
@@ -62,3 +74,42 @@ def test_mixed_pressure_is_flagged():
     assert _codes(check_sample_em(_sample(), strokes)) == {"pressure_mixed"}
     all_float = _strokes([(0.05, 0.0), (0.55, 0.5)], pressure=0.5)
     assert check_sample_em(_sample(), all_float) == []
+
+
+def _png(width, height):
+    def chunk(tag, body):
+        return struct.pack(">I", len(body)) + tag + body + struct.pack(">I", zlib.crc32(tag + body) & 0xFFFFFFFF)
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0)
+    raw = b"".join(b"\x00" + b"\xff" * width for _ in range(height))
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+
+
+def test_png_size_reads_ihdr():
+    assert png_size(_png(154, 154)) == (154, 154)
+    with pytest.raises(ValueError):
+        png_size(b"notapng")
+
+
+def test_raster_size_consistent_with_padded_bbox_is_clean():
+    # bbox 0.5 x 0.5 em, pad 0.05 each side -> 0.6 x 0.6 em at S=256 -> 154 x 154 px (153.6 rounded)
+    assert check_sample_em(_sample(), None, raster=_png(154, 154)) == []
+    assert check_sample_em(_sample(), None, raster=(154, 154)) == []
+
+
+def test_raster_scale_mismatch_beyond_2_percent():
+    assert _codes(check_sample_em(_sample(), None, raster=_png(154, 160))) == {"raster_scale_mismatch"}
+    assert _codes(check_sample_em(_sample(), None, raster=(154, 160))) == {"raster_scale_mismatch"}
+    assert check_sample_em(_sample(), None, raster=(154, 156)) == []  # 1.3 % -> fine
+
+
+def test_raster_resolution_floor_32_px_per_em():
+    assert _codes(check_sample_em(_sample(), None, raster=(18, 18))) == {"raster_resolution"}  # 30 px/em
+    assert check_sample_em(_sample(), None, raster=(20, 20)) == []  # 33.3 px/em
+
+
+def test_raster_pixel_em_round_trip_with_pad():
+    bbox = BBox(x=0.05, y=-0.2, w=0.5, h=0.7)
+    scale = 256.0
+    assert raster_px_to_em(0.0, 0.0, bbox, scale) == pytest.approx((0.0, 0.55), abs=1e-9)  # top-left = (bbox.x - pad, bbox.y + h + pad)
+    x, y = raster_em_to_px(0.3, 0.1, bbox, scale)
+    assert raster_px_to_em(x, y, bbox, scale) == pytest.approx((0.3, 0.1), abs=1e-9)
