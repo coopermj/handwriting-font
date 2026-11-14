@@ -47,3 +47,10 @@ def log(inputs):
     from review.decisions import default_log
 
     return default_log(inputs, NOW)
+
+
+@pytest.fixture
+def stats(inputs):
+    from review.session import compute_stats
+
+    return compute_stats(inputs)
