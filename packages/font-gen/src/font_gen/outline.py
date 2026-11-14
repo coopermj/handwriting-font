@@ -23,6 +23,7 @@ from font_gen.qa import Finding
 QU2CU_ERR = 1.0
 FLATTEN_N = 8
 INTERSECT_TOL = 0.5
+INTERSECT_BLOCK = 512   # chord rows per block in the crossing test (bounds memory to ~BLOCK x n)
 DRIFT_TOL = 0.05
 FIXED_POINT_ROUNDS = 3
 MAX_CONTOURS = 12
@@ -214,26 +215,53 @@ def _orient(p: np.ndarray, q: np.ndarray, r: np.ndarray) -> np.ndarray:
 
 
 def is_intersection_free(outline: Outline) -> bool:
+    """No two non-adjacent chords of the flattened outline cross properly (a shared vertex is a touch, not a cross).
+
+    Exact, but not dense: chords are sorted by left edge and taken in row blocks of `INTERSECT_BLOCK`; each row is
+    paired only with later chords whose x-range can reach it, then by bbox overlap, before any orientation test.
+    Shared endpoints are compared as integer vertex ids rather than coordinate pairs.
+    """
     polys = [p for p in flatten_outline(outline) if len(p) >= 2]
     if not polys:
         return True
     a = np.concatenate([p[:-1] for p in polys])
     b = np.concatenate([p[1:] for p in polys])
+    n = len(a)
     cid = np.concatenate([np.full(len(p) - 1, k) for k, p in enumerate(polys)])
     idx = np.concatenate([np.arange(len(p) - 1) for p in polys])
     count = np.concatenate([np.full(len(p) - 1, len(p) - 1) for p in polys])
-    ai, bi, aj, bj = a[:, None], b[:, None], a[None], b[None]
-    o1, o2 = _orient(ai, bi, aj), _orient(ai, bi, bj)
-    o3, o4 = _orient(aj, bj, ai), _orient(aj, bj, bi)
-    cross = (o1 * o2 < 0) & (o3 * o4 < 0)
-    same = cid[:, None] == cid[None]
-    gap = (idx[:, None] - idx[None]) % count[:, None]
-    adjacent = same & ((gap == 1) | (gap == count[:, None] - 1))
-    eq = lambda u, v: np.all(u == v, axis=-1)
-    shared = eq(ai, aj) | eq(ai, bj) | eq(bi, aj) | eq(bi, bj)
-    cross &= ~adjacent & ~shared
-    np.fill_diagonal(cross, False)
-    return not bool(cross.any())
+    # + 0.0 folds -0.0 into 0.0 so vertex ids agree with coordinate equality
+    _, vid = np.unique(np.concatenate([a, b]) + 0.0, axis=0, return_inverse=True)
+    vid = vid.reshape(-1)
+    va, vb = vid[:n], vid[n:]
+    lo, hi = np.minimum(a, b), np.maximum(a, b)
+    order = np.argsort(lo[:, 0], kind="stable")
+    xmin_sorted = lo[order, 0]
+    for s in range(0, n, INTERSECT_BLOCK):
+        rows = order[s:s + INTERSECT_BLOCK]
+        stop = int(np.searchsorted(xmin_sorted, hi[rows, 0].max(), side="right"))
+        if stop <= s + 1:
+            continue
+        cols = order[s + 1:stop]
+        later = np.arange(s, s + len(rows))[:, None] < np.arange(s + 1, stop)[None]   # each unordered pair once
+        overlap = later & (lo[cols, 0][None] <= hi[rows, 0][:, None]) \
+            & (lo[cols, 1][None] <= hi[rows, 1][:, None]) & (lo[rows, 1][:, None] <= hi[cols, 1][None])
+        r, c = np.nonzero(overlap)
+        if not len(r):
+            continue
+        i, j = rows[r], cols[c]
+        gap = (idx[i] - idx[j]) % count[i]
+        adjacent = (cid[i] == cid[j]) & ((gap == 1) | (gap == count[i] - 1))
+        shared = (va[i] == va[j]) | (va[i] == vb[j]) | (vb[i] == va[j]) | (vb[i] == vb[j])
+        keep = ~adjacent & ~shared
+        i, j = i[keep], j[keep]
+        if not len(i):
+            continue
+        cross = (_orient(a[i], b[i], a[j]) * _orient(a[i], b[i], b[j]) < 0) \
+            & (_orient(a[j], b[j], a[i]) * _orient(a[j], b[j], b[i]) < 0)
+        if cross.any():
+            return False
+    return True
 
 
 def drift_ok(outline: Outline, union_path: pathops.Path) -> bool:
