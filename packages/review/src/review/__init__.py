@@ -38,6 +38,7 @@ from review.ink import (
 )
 from review.inputs import PageInputs, ReviewInputs, load_inputs
 from review.normalize import ADVANCE_CLAMP, STUB_EXTENT, Materialised, materialise, sample_id
+from review.run import Session, main, open_session
 from review.session import (
     HALF_GAP_DEFAULT,
     XH_LETTERS,
@@ -88,6 +89,7 @@ __all__ = [
     "ReviewError",
     "ReviewInputs",
     "ReviewLog",
+    "Session",
     "SessionStats",
     "__version__",
     "accept",
@@ -110,7 +112,9 @@ __all__ = [
     "load_log",
     "materialise",
     "mirror",
+    "main",
     "neighbours",
+    "open_session",
     "polylines_to_strokes",
     "region_pool",
     "reject",

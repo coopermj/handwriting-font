@@ -34,11 +34,17 @@ def targets_from_sidecar(sidecar: CaptureSidecar) -> list[Target]:
     return [found[label] for label in sorted(found)]
 
 
-def seed_targets(store: GlyphStore, inputs: ReviewInputs, targets: Sequence[Target] | None = None) -> int:
-    """Add targets to a store that has none; returns the count added (0 when already seeded)."""
+def seed_targets(
+    store: GlyphStore, inputs: ReviewInputs | CaptureSidecar, targets: Sequence[Target] | None = None
+) -> int:
+    """Add targets to a store that has none; returns the count added (0 when already seeded).
+
+    `inputs` may be the loaded `ReviewInputs` or just the `CaptureSidecar` (as `review init` has no candidates).
+    """
     if store.targets():
         return 0
-    chosen = list(targets) if targets is not None else targets_from_sidecar(inputs.sidecar)
+    sidecar = inputs if isinstance(inputs, CaptureSidecar) else inputs.sidecar
+    chosen = list(targets) if targets is not None else targets_from_sidecar(sidecar)
     for t in chosen:
         store.add_target(t)
     return len(chosen)
