@@ -14,7 +14,7 @@ class Context(BaseModel):
 
 
 class Metrics(BaseModel):
-    """Em-normalized typographic metrics for one sample."""
+    """Em-normalized typographic metrics for one sample (frame: hwfont_schema.emspace, em-v1)."""
 
     baseline: float
     x_height: float = Field(gt=0)

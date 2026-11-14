@@ -5,6 +5,7 @@ from hwfont_schema.enums import (
     Quality,
     ReviewStatus,
 )
+from hwfont_schema.emspace import EM_CONVENTION_VERSION, RASTER_PAD, check_sample_em
 from hwfont_schema.geometry import BBox
 from hwfont_schema.candidate import Candidate, CandidateProvenance, CandidateSet
 from hwfont_schema.sample import Context, Metrics, Sample, Target
@@ -37,5 +38,8 @@ __all__ = [
     "Quality",
     "GlyphStore",
     "CoverageRow",
+    "EM_CONVENTION_VERSION",
+    "RASTER_PAD",
+    "check_sample_em",
     "__version__",
 ]
