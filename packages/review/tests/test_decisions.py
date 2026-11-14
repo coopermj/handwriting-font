@@ -109,3 +109,13 @@ def test_empty_vision_label(inputs):  # I3
     with pytest.raises(ReviewError, match="empty label; relabel first"):
         accept(log, ids[1], NOW)
     assert accept(relabel(log, inputs2, ids[1], "h", NOW), ids[1], NOW).decisions[ids[1]].status.value == "accepted"
+
+
+def test_default_decision_kind_follows_label_length(inputs):  # minor
+    from hwfont_schema import Kind
+
+    c = next(iter(inputs.pages["p0"].candidates.values()))
+    lig_by_vision = c.model_copy(update={"label": "e", "kind": Kind.ligature})
+    assert default_decision(lig_by_vision, NOW).kind == Kind.single
+    single_by_vision = c.model_copy(update={"label": "th", "kind": Kind.single})
+    assert default_decision(single_by_vision, NOW).kind == Kind.ligature

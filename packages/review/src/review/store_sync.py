@@ -53,22 +53,28 @@ def seed_targets(
 def mirror(
     store: GlyphStore, inputs: ReviewInputs, stats: SessionStats, log: ReviewLog, candidate_id: str
 ) -> Decision:
-    """Make the store reflect one decision; returns it with flags/quality from materialisation.
+    """Make the store reflect one decision; returns it with the flags from materialisation.
 
     Flags: the decision-level flags (`DECISION_FLAGS`) first, then the materialisation flags, deduplicated;
-    a decision that is not accepted keeps only its decision-level flags.
+    a decision that is not accepted keeps only its decision-level flags. The decision's quality is never
+    overwritten: the stored sample may carry a downgraded quality (its flags say why), the decision keeps
+    the reviewer's choice.
     """
+    if inputs.session_id != log.session_id:
+        raise ReviewError(
+            f"review log belongs to session {log.session_id!r}, but the inputs are session {inputs.session_id!r}"
+        )
     d = log.decisions.get(candidate_id)
     if d is None:
         raise ReviewError(f"unknown candidate id {candidate_id!r}")
-    sid = sample_id(inputs.session_id, candidate_id)
+    sid = sample_id(log.session_id, candidate_id)
     decision_flags = [f for f in d.flags if f in DECISION_FLAGS]
     if d.status is DecisionStatus.accepted:
         m = materialise(inputs, stats, log, candidate_id)  # may raise before any store change
         store.remove_sample(sid)
         store.add_sample(m.sample, strokes=m.strokes, raster=m.raster)
         flags = list(dict.fromkeys([*decision_flags, *m.flags]))
-        return d.model_copy(update={"flags": flags, "quality": m.sample.quality})
+        return d.model_copy(update={"flags": flags})
     store.remove_sample(sid)
     return d.model_copy(update={"flags": list(dict.fromkeys(decision_flags))})
 

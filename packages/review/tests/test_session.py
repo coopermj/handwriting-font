@@ -49,6 +49,7 @@ def test_x_height_is_median_of_p90_tops(inputs):
     stats = compute_stats(inputs)
     assert stats.n_x_height_letters >= 6 and stats.flags == ()
     assert 0.38 <= stats.x_height <= 0.46  # loops top out at exactly 0.45 em
+    assert stats.x_height == pytest.approx(0.4363, abs=5e-4)  # pinned: fixture "the cat sat / a fat hen ate / the hat"
     assert 0.0 < stats.median_half_gap < 0.15 and stats.n_gaps >= 6
 
 

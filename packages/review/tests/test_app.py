@@ -135,3 +135,34 @@ def test_session_json_carries_inconsistencies(tmp_path, synth):  # I5
         assert j["inconsistencies"] == s.inconsistencies
     finally:
         s.close()
+
+
+def test_box_and_relabel_success(client, session, synth):  # Task 11 extra
+    cid = _id_of(session.inputs, "c", region=0)
+    b = session.inputs.candidate(cid).bbox
+    r = client.post(f"/api/candidate/{cid}/box", json={"x": b.x, "y": b.y, "w": b.w + 2, "h": b.h})
+    assert r.status_code == 200 and r.json()["bbox"]["w"] == pytest.approx(b.w + 2)
+    assert session.log_for(cid).decisions[cid].bbox.w == pytest.approx(b.w + 2)
+    r = client.post(f"/api/candidate/{cid}/relabel", json={"label": "e"})
+    assert r.status_code == 200 and r.json()["label"] == "e" and r.json()["kind"] == "single"
+
+
+@pytest.mark.parametrize("w", [0, -3])
+def test_box_non_positive_width_is_400(client, session, w):  # Task 11 extra
+    cid = _id_of(session.inputs, "a", region=0)
+    b = session.inputs.candidate(cid).bbox
+    r = client.post(f"/api/candidate/{cid}/box", json={"x": b.x, "y": b.y, "w": w, "h": b.h})
+    assert r.status_code == 400 and r.json()["detail"]
+
+
+def test_post_response_carries_mirror_flags(client, session, synth):  # Task 11 extra
+    t, h = (_id_of(session.inputs, c, region=0) for c in "th")
+    pg = session.inputs.pages["p0"]; bt, bh = pg.candidates[t].bbox, pg.candidates[h].bbox
+    rb = synth.page.regions[0].bbox
+    assert client.post(f"/api/candidate/{t}/accept").json()["flags"] == []
+    r = client.post(f"/api/candidate/{t}/box", json={"x": bt.x, "y": rb.y, "w": bh.x + bh.w - bt.x, "h": rb.h})
+    assert r.status_code == 200 and "neighbor_swallowed" in r.json()["flags"]  # materialisation flag
+    r = client.post(f"/api/candidate/{t}/relabel", json={"label": "zz"})
+    assert r.json()["flags"][0] == "label_not_expected" and "neighbor_swallowed" in r.json()["flags"]
+    stored = session.store.get_sample(sample_id("capture", t))
+    assert stored is not None and stored.label == "zz"

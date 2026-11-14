@@ -269,3 +269,32 @@ def test_module_entry_point():  # I8
 
     r = subprocess.run([sys.executable, "-m", "review.run", "--help"], capture_output=True, text=True)
     assert r.returncode == 0 and "replay" in r.stdout
+
+
+def test_apply_prevalidates_every_id_before_writing(tmp_path, synth, capsys):  # minor
+    assert _init(tmp_path, synth) == 0
+    inputs = load_inputs(synth.sidecar_path, [synth.candidate_dir], {"p0": synth.raster_path})
+    h = _id_of(inputs, "h", region=0)
+    open_session(tmp_path / "store", synth.sidecar_path, [synth.candidate_dir], None, None, NOW).close()
+    saved = (synth.candidate_dir / LOG_NAME).read_bytes()
+    capsys.readouterr()
+    assert main(["apply", *_common(tmp_path, synth), "--now", NOW, "--accept", h, "--accept", "nope"]) == 1
+    out = capsys.readouterr()
+    assert "nope" in out.err and "accepted" not in out.out
+    s = GlyphStore.open(tmp_path / "store")
+    try:
+        assert s.all_samples() == []
+    finally:
+        s.close()
+    assert (synth.candidate_dir / LOG_NAME).read_bytes() == saved
+
+
+def test_init_force_with_targets_notices_existing_targets(tmp_path, synth, capsys):  # minor
+    assert _init(tmp_path, synth) == 0
+    tf = tmp_path / "t.json"
+    tf.write_text(json.dumps([{"label": "a", "kind": "single", "required_count": 3}]))
+    capsys.readouterr()
+    assert main(["init", "--store", str(tmp_path / "store"), "--sidecar", str(synth.sidecar_path),
+                 "--force", "--targets", str(tf)]) == 0
+    out = capsys.readouterr().out
+    assert "notice:" in out and "ignored" in out and "0 targets" in out

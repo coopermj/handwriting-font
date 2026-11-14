@@ -56,11 +56,13 @@ class ReviewLog(BaseModel):
 
 
 def default_decision(candidate: Candidate, now: str) -> Decision:
+    """The pending decision for a candidate as ingested; `kind` follows the label-length rule (as `relabel`),
+    not the vision kind."""
     return Decision(
         candidate_id=candidate.id,
         status=DecisionStatus.pending,
         label=candidate.label,
-        kind=candidate.kind,
+        kind=Kind.single if len(candidate.label) == 1 else Kind.ligature,
         bbox=candidate.bbox.model_copy(),
         quality=Quality.good,
         flags=[],

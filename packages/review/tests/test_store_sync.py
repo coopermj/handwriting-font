@@ -149,3 +149,68 @@ def test_reject_clears_materialisation_flags(store, tmp_path):  # I1
     assert "advance_clamped" in d.flags
     _, d = apply(store, deep, st, log2, sp.candidate_dir, lambda l: reject(l, b, NOW), b)
     assert d.flags == [] and store.get_sample(sample_id("capture", b)) is None
+
+
+def test_decision_quality_is_never_overwritten(store, tmp_path):  # minor (spec ruling 10 amendment)
+    from hwfont_schema import Contour, Quality, StrokeData, StrokePoint
+    from synth_page import synth_page
+
+    from review.decisions import default_log
+    from review.inputs import load_inputs
+    from review.session import compute_stats, unit_order
+
+    sp = synth_page(tmp_path / "ll", ["ll"])
+    base = load_inputs(sp.sidecar_path, [sp.candidate_dir])
+    pg = base.pages["p0"]
+    a, b = unit_order(pg, sp.page.regions[0].id)
+    xa = min(p.x for c in pg.strokes[a].contours for p in c.points)
+    y0 = sp.page.regions[0].baseline_y
+    stub = StrokeData(contours=[Contour(points=[StrokePoint(x=xa, y=y0 - 10), StrokePoint(x=xa + 0.3, y=y0 - 11)])])
+    deep = dataclasses.replace(base, pages={"p0": dataclasses.replace(pg, strokes={**pg.strokes, b: stub})})
+    log2, d = apply(store, deep, compute_stats(deep), default_log(deep, NOW), sp.candidate_dir,
+                    lambda l: accept(l, b, NOW), b)
+    assert store.get_sample(sample_id("capture", b)).quality == Quality.marginal  # em-v1 advance clamp
+    assert d.quality == Quality.good and log2.decisions[b].quality == Quality.good and "advance_clamped" in d.flags
+
+
+def test_mirror_refuses_a_log_of_another_session(store, inputs, stats, log):  # minor
+    other = log.model_copy(update={"session_id": "elsewhere"})
+    with pytest.raises(ReviewError, match="elsewhere"):
+        mirror(store, inputs, stats, other, next(iter(log.decisions)))
+
+
+def test_accept_twice_is_idempotent(store, inputs, stats, log, synth):  # Task 8 extra
+    cid = _id_of(inputs, "h", region=0); sid = sample_id("capture", cid)
+    log2, d2 = apply(store, inputs, stats, log, synth.candidate_dir, lambda l: accept(l, cid, NOW), cid)
+    first, digest = store.get_sample(sid), store_digest(store)
+    log3, d3 = apply(store, inputs, stats, log2, synth.candidate_dir, lambda l: accept(l, cid, NOW), cid)
+    assert store.get_sample(sid) == first and store_digest(store) == digest and d3 == d2
+    assert [s.id for s in store.all_samples()] == [sid]
+
+
+def test_replay_with_rejected_entries(store, inputs, stats, log, synth, tmp_path):  # Task 8 extra
+    a, b, c = (_id_of(inputs, ch, region=0) for ch in "the")
+    cur = log
+    for cid, op in ((a, accept), (b, reject), (c, accept)):
+        cur, _ = apply(store, inputs, stats, cur, synth.candidate_dir, lambda l, x=cid, f=op: f(l, x, NOW), cid)
+    cur, _ = apply(store, inputs, stats, cur, synth.candidate_dir, lambda l: reject(l, c, NOW), c)  # accepted, then rejected
+    other = GlyphStore.create(tmp_path / "other")
+    try:
+        replayed = replay(other, inputs, stats, load_log(synth.candidate_dir, inputs, NOW))
+        assert [s.id for s in other.all_samples()] == [sample_id("capture", a)]
+        assert store_digest(other) == store_digest(store) and replayed == cur
+        assert replayed.decisions[b].status == DecisionStatus.rejected
+    finally:
+        other.close()
+
+
+def test_failed_reaccept_leaves_the_existing_sample(store, inputs, stats, log, synth):  # Task 8 extra
+    cid = _id_of(inputs, "h", region=0); sid = sample_id("capture", cid)
+    log2, _ = apply(store, inputs, stats, log, synth.candidate_dir, lambda l: accept(l, cid, NOW), cid)
+    before, digest, saved = store.get_sample(sid), store_digest(store), (synth.candidate_dir / LOG_NAME).read_bytes()
+    rb = synth.page.regions[0].bbox
+    empty = BBox(x=rb.x + rb.w - 12, y=rb.y + 2, w=10, h=10)  # blank paper at the row's right end
+    with pytest.raises(ReviewError, match="no ink"):
+        apply(store, inputs, stats, log2, synth.candidate_dir, lambda l: adjust_box(l, inputs, cid, empty, NOW), cid)
+    assert store.get_sample(sid) == before and store_digest(store) == digest
+    assert (synth.candidate_dir / LOG_NAME).read_bytes() == saved

@@ -224,6 +224,8 @@ def init_command(args: argparse.Namespace) -> int:
             raise ReviewError(f"cannot read targets {args.targets}: {exc}") from exc
     store = GlyphStore.open(root) if db.exists() else GlyphStore.create(root)
     try:
+        if targets is not None and store.targets():
+            print(f"notice: {root} already has targets; --targets {args.targets} ignored")
         n = seed_targets(store, sidecar, targets)
     finally:
         store.close()
@@ -232,7 +234,11 @@ def init_command(args: argparse.Namespace) -> int:
 
 
 def _resolve_actions(raw: Sequence[tuple[str, str]], now: str, inputs: ReviewInputs):
-    """Turn the ordered `(kind, value)` list into `(line_fn, op, candidate_id)` steps; validates before any write."""
+    """Turn the ordered `(kind, value)` list into `(candidate_id, op, line_fn)` steps.
+
+    A generator: flag syntax (`--quality` placement and value, `ID=...` forms) is checked as it is consumed,
+    so callers materialise it (`list(...)`) and check the candidate ids before any write.
+    """
     steps: list[list] = []
     for kind, value in raw:
         if kind == "quality":
@@ -274,6 +280,8 @@ def apply_command(args: argparse.Namespace) -> int:
     session = _open(args)
     try:
         steps = list(_resolve_actions(raw, now, session.inputs))
+        for cid, _, _ in steps:  # every id must be known before anything is written
+            session.dir_of(cid)
         for cid, op, line in steps:
             d = session.apply(op, cid)
             _print_decision(line(d), d)
