@@ -48,13 +48,19 @@ def test_relabel_follows_kind_rule_and_flags_unexpected(inputs):
         with pytest.raises(ReviewError): relabel(log, inputs, cid, bad, NOW)
 
 
-def test_adjust_box_must_stay_inside_region(inputs):
+def test_adjust_box_must_stay_on_page_and_touch_region(inputs):
     log = default_log(inputs, NOW); cid = next(iter(log.decisions))
-    region = inputs.page_of(cid).region(inputs.candidate(cid).region_id)
+    page = inputs.page_of(cid).page; region = inputs.page_of(cid).region(inputs.candidate(cid).region_id)
     inside = BBox(x=region.bbox.x + 1, y=region.bbox.y + 1, w=20, h=30)
     assert adjust_box(log, inputs, cid, inside, NOW).decisions[cid].bbox == inside
-    with pytest.raises(ReviewError):
-        adjust_box(log, inputs, cid, BBox(x=region.bbox.x - 5, y=region.bbox.y, w=20, h=20), NOW)
+    overhang = BBox(x=region.bbox.x + 1, y=region.bbox.y + region.bbox.h - 10, w=20, h=30)   # dips below the row
+    assert adjust_box(log, inputs, cid, overhang, NOW).decisions[cid].bbox == overhang
+    assert adjust_box(log, inputs, cid, inputs.candidate(cid).bbox, NOW).decisions[cid].bbox == inputs.candidate(cid).bbox  # the original always re-submits
+    for bad in (BBox(x=-1, y=region.bbox.y, w=20, h=20),                                   # off the page
+                BBox(x=region.bbox.x, y=region.bbox.y + region.bbox.h + 5, w=20, h=20),  # misses the region
+                BBox(x=page.width_px - 10, y=region.bbox.y, w=20, h=20)):                 # past the right edge
+        with pytest.raises(ReviewError):
+            adjust_box(log, inputs, cid, bad, NOW)
 
 
 def test_reset_restores_original(inputs):

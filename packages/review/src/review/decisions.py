@@ -102,10 +102,14 @@ def adjust_box(log: ReviewLog, inputs: ReviewInputs, candidate_id: str, bbox: BB
         raise ReviewError(f"unknown candidate id {candidate_id!r}")
     cand = inputs.candidate(candidate_id)
     rb = inputs.page_of(candidate_id).region(cand.region_id).bbox
+    # The box must be sized, on the page, and overlap its region (it may overhang the region, e.g. descenders).
+    page = inputs.page_of(candidate_id).page
     if bbox.w <= 0 or bbox.h <= 0:
-        raise ReviewError("box must have positive width and height")
-    if bbox.x < rb.x or bbox.y < rb.y or bbox.x + bbox.w > rb.x + rb.w or bbox.y + bbox.h > rb.y + rb.h:
-        raise ReviewError(f"box for {candidate_id!r} must stay inside its region bbox")
+        raise ReviewError(f"box for {candidate_id!r} must have positive width and height")
+    if bbox.x < 0 or bbox.y < 0 or bbox.x + bbox.w > page.width_px or bbox.y + bbox.h > page.height_px:
+        raise ReviewError(f"box for {candidate_id!r} must lie within the page")
+    if not (bbox.x < rb.x + rb.w and bbox.x + bbox.w > rb.x and bbox.y < rb.y + rb.h and bbox.y + bbox.h > rb.y):
+        raise ReviewError(f"box for {candidate_id!r} must intersect its region bbox")
     return _replace(log, candidate_id, bbox=bbox.model_copy(), updated_at=now)
 
 
