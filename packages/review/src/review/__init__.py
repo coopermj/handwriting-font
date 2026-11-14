@@ -51,6 +51,15 @@ from review.session import (
     scale,
     unit_order,
 )
+from review.store_sync import (
+    LIGATURE_REQUIRED,
+    SINGLE_REQUIRED,
+    apply,
+    mirror,
+    replay,
+    seed_targets,
+    targets_from_sidecar,
+)
 
 __version__ = "0.1.0"
 
@@ -59,8 +68,10 @@ __all__ = [
     "HALF_GAP_DEFAULT",
     "INK_THRESHOLD",
     "INSIDE_FRACTION",
+    "LIGATURE_REQUIRED",
     "LOG_NAME",
     "RASTER_SCALE",
+    "SINGLE_REQUIRED",
     "STUB_EXTENT",
     "XH_LETTERS",
     "XH_PERCENTILE",
@@ -78,6 +89,7 @@ __all__ = [
     "__version__",
     "accept",
     "adjust_box",
+    "apply",
     "assign_strokes",
     "candidate_extent",
     "candidate_top_em",
@@ -93,18 +105,22 @@ __all__ = [
     "load_inputs",
     "load_log",
     "materialise",
+    "mirror",
     "neighbours",
     "polylines_to_strokes",
     "region_pool",
     "reject",
     "relabel",
+    "replay",
     "resample_raster",
     "reset",
     "sample_id",
     "save_log",
     "scale",
+    "seed_targets",
     "set_quality",
     "stroke_extent",
     "strokes_to_polylines",
+    "targets_from_sidecar",
     "unit_order",
 ]
