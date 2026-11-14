@@ -288,17 +288,17 @@ def shaping_expectations(plan: GlyphPlan) -> list[Expectation]:
             if pos in plan.positional[base]:
                 exps.append(Expectation(words[pos], _word_forms(plan, words[pos]), "noalt", None, f"{base} takes .{pos}"))
 
-    # the §9.9 fixed rows that apply: transparent skipping at depth 1 and 2, reset at depth 3 (a letter: a cycling
-    # punctuation ring would step the counter itself and the rows would not hold)
+    # the §9.9 fixed rows that apply: transparent skipping at depth 1 and 2, reset at depth 3. The letter must be a
+    # letter and the period must be transparent (a singleton ring): a cycling punctuation ring steps the counter
+    # itself, so with a 2-variant letter `a. a` wraps back to the base and `a...a` does not reset
     cmapped = {chr(cp) for cp in plan.cmap}
     first = next((lab for (lab, pos), ring in sorted(plan.rings.items(), key=lambda kr: kr[0][0])
                   if pos is None and len(lab) == 1 and lab.isalpha() and len(ring) >= 2 and lab in cmapped), None)
     if first is not None:
         rows: list[tuple[str, Mode, str]] = [(f"{first} {first}", "ends_distinct", "skip depth 1")]
-        if "." in cmapped:
+        if "." in cmapped and base_name(".") in plan.transparent:
             rows.append((f"{first}. {first}", "ends_distinct", "skip depth 2"))
-            if base_name(".") in plan.transparent:
-                rows.append((f"{first}...{first}", "ends_equal", "depth-3 reset"))
+            rows.append((f"{first}...{first}", "ends_equal", "depth-3 reset"))
         for text, mode, note in rows:
             if all(ch in cmapped for ch in text):
                 exps.append(Expectation(text, (), mode, None, note))

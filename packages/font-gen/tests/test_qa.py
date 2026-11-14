@@ -129,3 +129,22 @@ def test_self_check_tolerates_a_plan_without_calt(tmp_path):
     hm = {n: (500, 50 if n != "space" else 0) for n in plan.names()}
     findings = self_check(font, plan, outlines, hm, VMetrics(800, -200, 0, 450, 700), TTFont(io.BytesIO(font))["head"].created)
     assert [f.code for f in findings] == []
+
+
+def test_period_rows_need_a_transparent_period(tmp_path):
+    # a cycling period steps the counter itself: with a 2-variant letter `a. a` shapes to `a period.alt1 space a`
+    # (first == last) and `a...a` does not reset, so neither §9.9 period row is generated unless the period is transparent
+    from conftest import stub_font_from_spec
+    for n in (2, 3):
+        font, plan = stub_font_from_spec(tmp_path / f"p{n}", {"a": {"medi": 2}, ".": {"isol": n}})
+        assert "period" not in plan.transparent
+        exps = shaping_expectations(plan)
+        texts = [e.text for e in exps]
+        assert "a a" in texts and "a. a" not in texts and "a...a" not in texts
+        assert [(e.text, check_expectation(font, e)) for e in exps if check_expectation(font, e)] == []
+    font, plan = stub_font_from_spec(tmp_path / "p1", {"a": {"medi": 2}, ".": {"isol": 1}})
+    assert "period" in plan.transparent
+    exps = shaping_expectations(plan)
+    texts = [e.text for e in exps]
+    assert "a. a" in texts and "a...a" in texts
+    assert [(e.text, check_expectation(font, e)) for e in exps if check_expectation(font, e)] == []
