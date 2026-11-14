@@ -115,3 +115,37 @@ def test_neighbour_adjustment_leaves_accepted_sample_alone(store, inputs, stats,
     small = BBox(x=synth.page.regions[0].bbox.x + 1, y=synth.page.regions[0].bbox.y + 1, w=5, h=5)
     apply(store, inputs, stats, log2, synth.candidate_dir, lambda l: adjust_box(l, inputs, h, small, NOW), h)
     assert store.get_sample(sample_id("capture", t)) == before
+
+
+def test_decision_flags_survive_materialisation(store, inputs, stats, log, synth):  # I1
+    cid = _id_of(inputs, "a", region=1)
+    log2, d = apply(store, inputs, stats, log, synth.candidate_dir, lambda l: relabel(l, inputs, cid, "q", NOW), cid)
+    assert d.flags == ["label_not_expected"]
+    log3, d = apply(store, inputs, stats, log2, synth.candidate_dir, lambda l: accept(l, cid, NOW), cid)
+    assert d.flags[0] == "label_not_expected" and len(d.flags) == len(set(d.flags))
+    assert load_log(synth.candidate_dir, inputs, NOW).decisions[cid].flags[0] == "label_not_expected"
+    _, d = apply(store, inputs, stats, log3, synth.candidate_dir, lambda l: reject(l, cid, NOW), cid)
+    assert d.flags == ["label_not_expected"]
+
+
+def test_reject_clears_materialisation_flags(store, tmp_path):  # I1
+    from hwfont_schema import Contour, StrokeData, StrokePoint
+    from synth_page import synth_page
+
+    from review.decisions import default_log
+    from review.inputs import load_inputs
+    from review.session import compute_stats, unit_order
+
+    sp = synth_page(tmp_path / "ll", ["ll"])
+    base = load_inputs(sp.sidecar_path, [sp.candidate_dir])
+    pg = base.pages["p0"]
+    a, b = unit_order(pg, sp.page.regions[0].id)
+    xa = min(p.x for c in pg.strokes[a].contours for p in c.points)
+    y0 = sp.page.regions[0].baseline_y
+    stub = StrokeData(contours=[Contour(points=[StrokePoint(x=xa, y=y0 - 10), StrokePoint(x=xa + 0.3, y=y0 - 11)])])
+    deep = dataclasses.replace(base, pages={"p0": dataclasses.replace(pg, strokes={**pg.strokes, b: stub})})
+    st = compute_stats(deep)
+    log2, d = apply(store, deep, st, default_log(deep, NOW), sp.candidate_dir, lambda l: accept(l, b, NOW), b)
+    assert "advance_clamped" in d.flags
+    _, d = apply(store, deep, st, log2, sp.candidate_dir, lambda l: reject(l, b, NOW), b)
+    assert d.flags == [] and store.get_sample(sample_id("capture", b)) is None

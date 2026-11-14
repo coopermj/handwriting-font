@@ -12,6 +12,9 @@ from review.inputs import ReviewInputs
 
 LOG_NAME = "review.json"
 NOT_EXPECTED = "label_not_expected"
+# Flags owned by the decision itself (set by a log op), as opposed to materialisation flags that
+# `store_sync.mirror` recomputes on every write; mirror keeps these across materialisation.
+DECISION_FLAGS = frozenset({NOT_EXPECTED})
 
 
 class DecisionStatus(str, Enum):
@@ -68,6 +71,9 @@ def _replace(log: ReviewLog, candidate_id: str, **changes: object) -> ReviewLog:
 
 
 def accept(log: ReviewLog, candidate_id: str, now: str, quality: Quality | None = None) -> ReviewLog:
+    d = log.decisions.get(candidate_id)
+    if d is not None and not d.label:
+        raise ReviewError(f"candidate {candidate_id!r} has an empty label; relabel first")
     changes: dict[str, object] = {"status": DecisionStatus.accepted, "updated_at": now}
     if quality is not None:
         changes["quality"] = quality

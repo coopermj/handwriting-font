@@ -51,7 +51,8 @@ def unit_order(page: PageInputs, region_id: str) -> list[str]:
     return sorted(page.candidate_ids(region_id), key=key)
 
 
-def _adjacent(page: PageInputs, region_id: str, candidate_id: str) -> tuple[str | None, str | None]:
+def adjacent(page: PageInputs, region_id: str, candidate_id: str) -> tuple[str | None, str | None]:
+    """The ids just left and right of `candidate_id` in unit order, regardless of Context."""
     order = unit_order(page, region_id)
     i = order.index(candidate_id)
     left = order[i - 1] if i > 0 else None
@@ -119,7 +120,7 @@ def _agree(page: PageInputs, region_id: str, candidate_id: str) -> tuple[str | N
     """Adjacent ids and, per side, whether the effective context names a neighbour there that the adjacent
     unit's original label agrees with (an empty label never agrees)."""
     ctx = effective_context(page, region_id, candidate_id)
-    left, right = _adjacent(page, region_id, candidate_id)
+    left, right = adjacent(page, region_id, candidate_id)
     left_label = page.candidates[left].label if left is not None else ""
     right_label = page.candidates[right].label if right is not None else ""
     left_ok = ctx.left_neighbor is not None and left_label != "" and left_label[-1] == ctx.left_neighbor
@@ -137,7 +138,7 @@ def neighbours(page: PageInputs, region_id: str, candidate_id: str) -> tuple[str
 def context_mismatch(page: PageInputs, region_id: str, candidate_id: str) -> tuple[bool, bool]:
     """Per side: the effective context names a neighbour, an adjacent unit exists, and its label disagrees."""
     ctx = effective_context(page, region_id, candidate_id)
-    left, right = _adjacent(page, region_id, candidate_id)
+    left, right = adjacent(page, region_id, candidate_id)
     _, _, left_ok, right_ok = _agree(page, region_id, candidate_id)
     return (
         ctx.left_neighbor is not None and left is not None and not left_ok,

@@ -31,7 +31,7 @@ from review.ink import (
     strokes_to_polylines,
 )
 from review.inputs import PageInputs, ReviewInputs
-from review.session import SessionStats, context_mismatch, effective_context, neighbours, scale
+from review.session import SessionStats, adjacent, context_mismatch, effective_context, neighbours, scale
 
 ADVANCE_CLAMP = 0.02
 STUB_EXTENT = 0.002  # em; a zero-extent axis is widened to this (inside emspace.BBOX_TOL)
@@ -123,8 +123,23 @@ def materialise(inputs: ReviewInputs, stats: SessionStats, log: ReviewLog, candi
             raise ReviewError(f"no ink for candidate {candidate_id!r}")
         flags.append("raster_only")
 
-    # 4. half-gaps from the original neighbours
+    # 4. half-gaps from the original neighbours; a box widened over an adjacent unit (its ORIGINAL box
+    #    centre inside the decision box) has swallowed it, so that side cannot measure against it
     left_id, right_id = neighbours(page, candidate.region_id, candidate_id)
+    if decision.bbox != candidate.bbox:
+        db = decision.bbox
+        adj_left, adj_right = adjacent(page, candidate.region_id, candidate_id)
+        for side, aid in (("left", adj_left), ("right", adj_right)):
+            if aid is None:
+                continue
+            ab = page.candidates[aid].bbox
+            cx, cy = ab.x + ab.w / 2, ab.y + ab.h / 2
+            if db.x <= cx <= db.x + db.w and db.y <= cy <= db.y + db.h:
+                flags.append("neighbor_swallowed")
+                if side == "left":
+                    left_id = None
+                else:
+                    right_id = None
     el, er = _neighbour_extent(page, left_id), _neighbour_extent(page, right_id)
     median_px = stats.median_half_gap / s
     lsb_px = 0.5 * (ink.xmin - el.xmax) if el is not None else median_px

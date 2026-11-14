@@ -90,3 +90,22 @@ def test_load_defaults_when_absent_and_unknown_dir(inputs, synth, tmp_path):
     assert set(load_log(synth.candidate_dir, inputs, NOW).decisions) == set(default_log(inputs, NOW).decisions)
     with pytest.raises(ReviewError):
         load_log(tmp_path / "elsewhere", inputs, NOW)
+
+
+def test_empty_vision_label(inputs):  # I3
+    import dataclasses
+
+    from review.decisions import default_log
+    from review.session import compute_stats, context_mismatch, neighbours, unit_order
+
+    pg = inputs.pages["p0"]; r0 = pg.page.regions[0].id; ids = unit_order(pg, r0)
+    blank = pg.candidates[ids[1]].model_copy(update={"label": ""})
+    inputs2 = dataclasses.replace(inputs, pages={"p0": dataclasses.replace(pg, candidates={**pg.candidates, ids[1]: blank})})
+    pg2 = inputs2.pages["p0"]
+    assert neighbours(pg2, r0, ids[0]) == (None, None) and context_mismatch(pg2, r0, ids[0]) == (False, True)
+    assert neighbours(pg2, r0, ids[2]) == (None, None)
+    compute_stats(inputs2)  # no crash
+    log = default_log(inputs2, NOW)
+    with pytest.raises(ReviewError, match="empty label; relabel first"):
+        accept(log, ids[1], NOW)
+    assert accept(relabel(log, inputs2, ids[1], "h", NOW), ids[1], NOW).decisions[ids[1]].status.value == "accepted"

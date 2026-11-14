@@ -138,3 +138,15 @@ def test_zero_extent_stub_is_widened_and_flagged(inputs, stats, log, axis):
     assert (b.h if axis == "horizontal" else b.w) == STUB_EXTENT
     assert "stub_extent" in m.flags and m.sample.quality == Quality.good and m.raster is not None
     assert check_sample_em(m.sample, m.strokes, m.raster) == []
+
+def test_box_widened_over_neighbour_uses_median_and_flags(inputs, stats, log, synth):  # I2
+    t, h = (_id_of(inputs, c, region=0) for c in "th")
+    pg = inputs.pages["p0"]; bt, bh = pg.candidates[t].bbox, pg.candidates[h].bbox
+    rb = synth.page.regions[0].bbox
+    wide = BBox(x=bt.x, y=rb.y, w=bh.x + bh.w - bt.x, h=rb.h)
+    m = materialise(inputs, stats, relabel(adjust_box(log, inputs, t, wide, NOW), inputs, t, "th", NOW), t)
+    b = m.sample.metrics.bbox
+    assert "neighbor_swallowed" in m.flags and m.sample.quality == Quality.good
+    assert m.sample.metrics.advance - (b.x + b.w) == pytest.approx(stats.median_half_gap)
+    assert m.sample.metrics.advance > b.x + b.w
+    assert "neighbor_swallowed" not in materialise(inputs, stats, log, t).flags
