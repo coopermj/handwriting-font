@@ -13,3 +13,9 @@ def test_distribution_maps_to_import_package():
     # editable hatchling installs list no top-level modules in RECORD, so packages_distributions() omits them;
     # the wheel `packages` entry is pinned by where the import package lives instead
     assert Path(font_gen.__file__).resolve().parts[-4:-1] == ("font-gen", "src", "font_gen")
+
+
+def test_reexports_importable():
+    from font_gen import (BuildResult, Finding, GlyphPlan, Outline, OutlineContour, QAReport, build_font, generate_features,
+                          main, outline_from_strokes, plan_glyphs, render_proof, synth_store)
+    assert callable(main) and callable(build_font) and callable(render_proof)
