@@ -245,3 +245,19 @@ def test_proof_verb_matches_build_proof_and_text_options(tmp_path, fixture_store
     assert (tmp_path / "p3.svg").read_text().count("<path") == 10 and not (tmp_path / "p3.png").exists()
     assert "proof_png_skipped" in capsys.readouterr().out
     assert main(["proof", "--font", str(out), "--out", str(tmp_path / "p3.svg")]) == 1
+
+
+@pytest.mark.parametrize("module", ["font_gen", "font_gen.run"])
+def test_module_invocation_runs_the_cli(tmp_path, fixture_store, module):
+    # `python -m font_gen.run ...` once imported the module and exited 0 without building anything
+    import subprocess
+    out = tmp_path / "M.otf"
+    proc = subprocess.run([sys.executable, "-m", module, "build", "--store", str(fixture_store.root), "--out", str(out)],
+                          capture_output=True, text=True, timeout=300)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert "glyphs" in proc.stdout and out.exists() and (tmp_path / "M.qa.json").exists()
+    if module == "font_gen":
+        assert "RuntimeWarning" not in proc.stderr
+    missing = subprocess.run([sys.executable, "-m", module, "build", "--store", str(tmp_path / "nope"), "--out", str(tmp_path / "X.otf")],
+                             capture_output=True, text=True, timeout=60)
+    assert missing.returncode == 1 and "No glyph store" in missing.stdout

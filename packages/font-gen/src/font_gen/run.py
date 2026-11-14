@@ -408,3 +408,7 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"error: {exc}")
         return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
