@@ -82,9 +82,9 @@ def clamp_slope(widths: np.ndarray, step: float, max_slope: float = SLOPE_MAX) -
     out = np.asarray(widths, dtype=float).copy()
     limit = max_slope * step
     for i in range(len(out) - 1):
-        out[i + 1] = min(max(out[i + 1], out[i] - limit), out[i] + limit)
+        out[i + 1] = min(out[i + 1], out[i] + limit)
     for i in range(len(out) - 2, -1, -1):
-        out[i] = min(max(out[i], out[i + 1] - limit), out[i + 1] + limit)
+        out[i] = min(out[i], out[i + 1] + limit)
     return out
 
 

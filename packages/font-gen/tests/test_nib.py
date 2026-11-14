@@ -54,6 +54,13 @@ def test_slope_clamp_limits_change_per_unit_of_arc_length():
     assert out[0] == 30.0 and out[2] == 30.0
 
 
+def test_slope_clamp_is_direction_independent():
+    fwd = clamp_slope(np.array([60.0, 30.0, 30.0, 30.0, 30.0]), step=8.0)
+    rev = clamp_slope(np.array([30.0, 30.0, 30.0, 30.0, 60.0]), step=8.0)
+    assert np.allclose(fwd, [35.6, 30, 30, 30, 30])
+    assert np.allclose(rev, fwd[::-1])
+
+
 def test_split_runs_at_3_percent_with_shared_boundaries():
     assert split_runs([45, 45, 46, 50, 50, 46, 45]) == [(0, 3), (3, 5), (5, 6)]
     assert split_runs([45.0] * 10) == [(0, 9)]
