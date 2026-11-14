@@ -169,3 +169,51 @@ def test_nested_ligature_labels_still_get_all_four_probe_rows(tmp_path):
         rows = {e.note.rsplit(" ", 1)[1]: e.text for e in exps if e.note.startswith(f"ligature {label} ")}
         assert rows == {"init": label + probe, "medi": probe + label + probe, "fina": probe + label, "isol": label}, lig
     assert [(e.text, check_expectation(font, e)) for e in exps if check_expectation(font, e)] == []
+
+
+def test_expectation_outside_the_cmap_raises_value_error(fixture_plan, monkeypatch):
+    import pytest
+
+    import font_gen.qa as qa
+    real = qa._probe_words
+    monkeypatch.setattr(qa, "_probe_words", lambda probe, core: {**real(probe, core), "isol": core + "☃"})
+    with pytest.raises(ValueError, match="uses a character outside the cmap"):
+        qa.shaping_expectations(fixture_plan)
+
+
+def _swap_calt_sections(fea: str) -> str:
+    """Define the variant-cycling lookups (STEP*, CYCLE) before the positional ones (TO_*, POS)."""
+    head, rest = fea.split("\n# ---------- positional forms ----------\n")
+    pos, rest = rest.split("\n# ---------- variant cycling ----------\n")
+    cyc, tail = rest.split("\n# ---------- features ----------\n")
+    return (head + "\n# ---------- variant cycling ----------\n" + cyc + "\n# ---------- positional forms ----------\n" + pos
+            + "\n# ---------- features ----------\n" + tail)
+
+
+def test_gsub_check_requires_pos_before_cycle_within_calt(fixture_otf, fixture_plan, fixture_fea):
+    from conftest import build_stub_font
+
+    from font_gen.qa import _check_gsub
+    assert _check_gsub(TTFont(io.BytesIO(fixture_otf)), fixture_plan) == []
+    assert _check_gsub(TTFont(io.BytesIO(build_stub_font(fixture_plan, fixture_fea))), fixture_plan) == []
+    swapped = build_stub_font(fixture_plan, _swap_calt_sections(fixture_fea))
+    problems = _check_gsub(TTFont(io.BytesIO(swapped)), fixture_plan)
+    assert len(problems) == 1 and "POS lookups" in problems[0] and "precede" in problems[0]
+
+
+def test_shape_glyphs_caches_the_parsed_font_per_bytes(fixture_otf, monkeypatch):
+    import font_gen.qa as qa
+    qa._SHAPER_CACHE.clear()
+    calls = []
+    real = qa._load_shaper
+    monkeypatch.setattr(qa, "_load_shaper", lambda data: calls.append(len(data)) or real(data))
+    first = qa.shape_names(fixture_otf, "aa")
+    assert qa.shape_names(bytes(fixture_otf), "aa") == first and qa.shape_names(fixture_otf, "fi") and len(calls) == 1
+    other = _resave(fixture_otf, lambda tt: setattr(tt["head"], "fontRevision", 1.5))
+    assert other != fixture_otf
+    assert qa.shape_names(other, "aa") == first and len(calls) == 2
+    for i in range(qa._SHAPER_CACHE_SIZE):  # bounded: the oldest font is evicted
+        qa.shape_names(_resave(fixture_otf, lambda tt, r=i: setattr(tt["head"], "fontRevision", 2.0 + r)), "a")
+    assert len(qa._SHAPER_CACHE) == qa._SHAPER_CACHE_SIZE and len(calls) == 2 + qa._SHAPER_CACHE_SIZE
+    qa.shape_names(fixture_otf, "a")
+    assert len(calls) == 3 + qa._SHAPER_CACHE_SIZE

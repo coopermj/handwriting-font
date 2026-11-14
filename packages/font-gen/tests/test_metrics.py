@@ -77,3 +77,48 @@ def test_outlier_and_suspicious_flags(fixture_plan, fixture_outlines, fixture_sa
     outlines["Q"] = Outline.empty()        # empty outlines are the outline checker's business, not this module's
     assert not any(f.glyph == "Q" for f in metric_findings(fixture_plan, outlines, fixture_samples))
     assert len(lowercase_advances(fixture_plan, fixture_samples)) == sum(1 for g in fixture_plan.glyphs if g.sample_id and g.label.islower() and len(g.label) == 1)
+
+
+def _fake_plan_and_samples(entries):
+    """entries: (name, label, kind, advance); a minimal plan + sample index for metric_findings (no outlines)."""
+    from types import SimpleNamespace
+
+    from hwfont_schema import Kind
+
+    from font_gen.select import GlyphPlan, GlyphSpec
+
+    glyphs, samples = [], {}
+    for name, label, kind, advance in entries:
+        sid = f"s-{name}"
+        glyphs.append(GlyphSpec(name, sid, label, Kind(kind), (label, None), 0, "strokes"))
+        metrics = SimpleNamespace(advance=advance, x_height=0.45)
+        samples[sid] = SimpleNamespace(sample=SimpleNamespace(metrics=metrics))
+    return GlyphPlan(tuple(glyphs), {}, 1, frozenset(), frozenset(), {}, {}, {}, {}), samples
+
+
+def _outliers(entries):
+    plan, samples = _fake_plan_and_samples(entries)
+    return [f for f in metric_findings(plan, {}, samples) if f.code == "advance_outlier"]
+
+
+def test_advance_outlier_groups_letters_and_punctuation_separately():
+    letters = [(c, c, "single", 0.53) for c in "abcd"]
+    # a short-advance period is not compared against the letter median (0.13 < 0.3 x 0.53)
+    assert _outliers(letters + [("period", ".", "single", 0.13)]) == []
+    assert _outliers(letters + [(f"p{i}", ".,'"[i], "single", 0.13) for i in range(3)]) == []
+    # a genuinely outlying letter still warns, against its own class median
+    found = _outliers(letters + [("e", "e", "single", 2.0), ("period", ".", "single", 0.13)])
+    assert [f.glyph for f in found] == ["e"]
+    assert "single_alnum median 0.530" in found[0].message
+    # a punctuation class of 3 with an outlier warns, naming its class
+    punct = [("p0", ".", "single", 0.13), ("p1", ",", "single", 0.13), ("p2", "!", "single", 1.0)]
+    found = _outliers(letters + punct)
+    assert [f.glyph for f in found] == ["p2"] and "single_other median 0.130" in found[0].message
+
+
+def test_advance_outlier_needs_three_samples_per_class():
+    assert _outliers([("a", "a", "single", 0.5), ("b", "b", "single", 3.0)]) == []
+    ligs = [("f_i", "fi", "ligature", 0.5), ("s_t", "st", "ligature", 5.0)]
+    assert _outliers(ligs + [(c, c, "single", 0.5) for c in "abc"]) == []
+    found = _outliers(ligs + [("t_h", "th", "ligature", 0.5)])
+    assert [f.glyph for f in found] == ["s_t"] and "ligature median 0.500" in found[0].message

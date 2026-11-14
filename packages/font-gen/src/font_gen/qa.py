@@ -7,9 +7,11 @@ inside the functions that use them (a module-level import would be circular).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import re
+from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from io import BytesIO
@@ -82,15 +84,35 @@ def severity_of(code: str) -> Severity:
 # ---------- shaping helpers ----------
 
 
+_SHAPER_CACHE_SIZE = 4
+# sha256(font bytes) → (hb.Font, glyph order), most recently used last; a build shapes one font ~650 times
+_SHAPER_CACHE: OrderedDict[bytes, tuple[hb.Font, list[str]]] = OrderedDict()
+
+
+def _load_shaper(font_bytes: bytes) -> tuple[hb.Font, list[str]]:
+    face = hb.Face(hb.Blob(font_bytes))
+    return hb.Font(face), TTFont(BytesIO(font_bytes)).getGlyphOrder()
+
+
+def _shaper(font_bytes: bytes) -> tuple[hb.Font, list[str]]:
+    key = hashlib.sha256(font_bytes).digest()
+    hit = _SHAPER_CACHE.get(key)
+    if hit is not None:
+        _SHAPER_CACHE.move_to_end(key)
+        return hit
+    loaded = _SHAPER_CACHE[key] = _load_shaper(font_bytes)
+    while len(_SHAPER_CACHE) > _SHAPER_CACHE_SIZE:
+        _SHAPER_CACHE.popitem(last=False)
+    return loaded
+
+
 def shape_glyphs(font_bytes: bytes, text: str, features: dict[str, bool] | None = None) -> list[tuple[str, int, int, int]]:
     """Shape `text` with HarfBuzz: `(glyph name, x_advance, x_offset, y_offset)` per output glyph."""
-    face = hb.Face(hb.Blob(font_bytes))
-    font = hb.Font(face)
+    font, order = _shaper(font_bytes)
     buf = hb.Buffer()
     buf.add_str(text)
     buf.guess_segment_properties()
     hb.shape(font, buf, features or {})
-    order = TTFont(BytesIO(font_bytes)).getGlyphOrder()
     return [(order[info.codepoint], pos.x_advance, pos.x_offset, pos.y_offset)
             for info, pos in zip(buf.glyph_infos, buf.glyph_positions)]
 
@@ -214,6 +236,11 @@ def probe_letter(plan: GlyphPlan, components: tuple[str, ...]) -> str | None:
 
     Ruling R3: a label nested inside `label` itself (`fi` in `ffi`, `ng` in `ing`) does not disqualify a probe, since
     it is present in every probe word; only a ligature the probe letter itself would complete does.
+
+    The exemption (`lab in label`) also means a probe letter that would complete a *nested* label across the boundary
+    (probe `f` with `ffi` → `fffi`, completing `ff` at the left edge) is not rejected. That case is unreachable:
+    `PROBE_PREFERENCE` contains no `f` or `g`, the only letters that start or end a default nested label. Either way
+    the expectations come from the `resolve_ligatures` oracle, so they stay correct for whatever probe is chosen.
     """
     by_name = plan.by_name()
     label = "".join(by_name[c].label for c in components)
@@ -315,7 +342,8 @@ def shaping_expectations(plan: GlyphPlan, cycle_mode: str = "stream") -> list[Ex
         exps.append(Expectation(chr(cp), (plan.cmap[cp],), "exact", dict(OFF3), f"U+{cp:04X} base glyph"))
 
     for e in exps:
-        assert all(ord(ch) in plan.cmap for ch in e.text), f"expectation {e.text!r} uses a character outside the cmap"
+        if not all(ord(ch) in plan.cmap for ch in e.text):
+            raise ValueError(f"expectation {e.text!r} uses a character outside the cmap")
     return exps
 
 
@@ -416,6 +444,47 @@ def _feature_lookups(gsub) -> dict[str, dict[str, set[int]]]:
     return out
 
 
+def _inner_lookups(lookup) -> set[int]:
+    """Lookup indices a (chain) contextual lookup references through its SubstLookupRecords, any format."""
+    out: set[int] = set()
+    for st in lookup.SubTable:
+        st = getattr(st, "ExtSubTable", st)
+        records = list(getattr(st, "SubstLookupRecord", None) or [])
+        for set_attr, rule_attr in (("ChainSubRuleSet", "ChainSubRule"), ("ChainSubClassSet", "ChainSubClassRule"),
+                                    ("SubRuleSet", "SubRule"), ("SubClassSet", "SubClassRule")):
+            for rule_set in getattr(st, set_attr, None) or []:
+                for rule in (getattr(rule_set, rule_attr, None) or []) if rule_set is not None else []:
+                    records.extend(rule.SubstLookupRecord or [])
+        out.update(r.LookupListIndex for r in records)
+    return out
+
+
+def _single_outputs(lookup) -> set[str]:
+    return {out for st in lookup.SubTable for out in getattr(getattr(st, "ExtSubTable", st), "mapping", {}).values()}
+
+
+def _calt_order_problem(gsub, calt: set[int]) -> str | None:
+    """Spec §11.4: within calt every POS lookup precedes every CYCLE lookup.
+
+    The binary keeps no lookup names (feaLib drops them without a Debg table), so the lookups are told apart by the
+    structure `features.py` emits: both are chain-contextual lookups, but CYCLE's inner lookups are the STEPk single
+    substitutions, whose outputs are always ring variants named `….alt<k>`, while POS's inner lookups are the TO_*
+    single substitutions, whose outputs are positional ring heads with no `.alt` suffix. A calt lookup referencing
+    no inner lookup is neither and is ignored.
+    """
+    lookups = gsub.LookupList.Lookup
+    pos_idx, cycle_idx = [], []
+    for i in sorted(calt):
+        inner = _inner_lookups(lookups[i])
+        if not inner:
+            continue
+        outputs = set().union(*(_single_outputs(lookups[j]) for j in inner))
+        (cycle_idx if any(_ALT_SUFFIX.search(o) for o in outputs) else pos_idx).append(i)
+    if pos_idx and cycle_idx and max(pos_idx) >= min(cycle_idx):
+        return f"calt POS lookups {pos_idx} do not all precede CYCLE lookups {cycle_idx}"
+    return None
+
+
 def _required_features(plan: GlyphPlan) -> set[str]:
     required: set[str] = set()
     if plan.ligatures:
@@ -447,6 +516,8 @@ def _check_gsub(tt: TTFont, plan: GlyphPlan) -> list[str]:
         problems.append(f"liga lookups {sorted(liga or ())} != clig lookups {sorted(clig or ())}")
     if liga and calt and max(liga) >= min(calt):
         problems.append(f"ligature lookups {sorted(liga)} do not all precede calt lookups {sorted(calt)}")
+    if calt and (problem := _calt_order_problem(tt["GSUB"].table, calt)) is not None:
+        problems.append(problem)
     return problems
 
 

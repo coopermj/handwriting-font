@@ -26,6 +26,7 @@ CAP_HEIGHT_DEFAULT = 700
 NOTDEF_METRICS = (500, 50)
 ADVANCE_RANGE = (0.3, 3.0)
 XH_TOL = 0.25
+ADVANCE_CLASS_MIN = 3  # Amendment 8: a class with fewer sampled glyphs gets no advance_outlier check
 OVERHANG_EM = 0.15
 XH_LETTERS = "acemnorsuvwxz"
 CAP_LETTERS = "HITEFL"
@@ -65,6 +66,13 @@ def _is_upper_single(g: GlyphSpec) -> bool:
 def _is_ring_head(g: GlyphSpec) -> bool:
     """Slot 0 of the default (position-less) ring: the glyph the cmap or a ligature rule names."""
     return g.slot == 0 and g.ring_key[1] is None
+
+
+def advance_class(g: GlyphSpec) -> str:
+    """Amendment 8: the median class for advance_outlier — ligature, single_alnum or single_other."""
+    if g.kind == Kind.ligature:
+        return "ligature"
+    return "single_alnum" if g.label.isalnum() else "single_other"
 
 
 def _sampled(plan: GlyphPlan) -> list[GlyphSpec]:
@@ -178,10 +186,10 @@ def metric_findings(
     sampled = _sampled(plan)
     if not sampled:
         return []
-    by_kind: dict[Kind, list[float]] = {}
+    by_class: dict[str, list[float]] = {}
     for g in sampled:
-        by_kind.setdefault(g.kind, []).append(samples[g.sample_id].sample.metrics.advance)
-    median_adv = {k: statistics.median(v) for k, v in by_kind.items()}
+        by_class.setdefault(advance_class(g), []).append(samples[g.sample_id].sample.metrics.advance)
+    median_adv = {k: statistics.median(v) for k, v in by_class.items() if len(v) >= ADVANCE_CLASS_MIN}
     median_xh = statistics.median(samples[g.sample_id].sample.metrics.x_height for g in sampled)
 
     findings: list[Finding] = []
@@ -193,11 +201,12 @@ def metric_findings(
             findings.append(Finding("warn", "metrics_suspicious", message, data=data, **ctx))
 
         lo, hi = ADVANCE_RANGE
-        med = median_adv[g.kind]
-        if not lo * med <= m.advance <= hi * med:
+        cls = advance_class(g)
+        med = median_adv.get(cls)
+        if med is not None and not lo * med <= m.advance <= hi * med:
             findings.append(Finding("warn", "advance_outlier",
-                                    f"advance {m.advance:.3f} em outside [{lo}, {hi}] x the {g.kind.value} median {med:.3f}",
-                                    data={"advance": m.advance, "median": med}, **ctx))
+                                    f"advance {m.advance:.3f} em outside [{lo}, {hi}] x the {cls} median {med:.3f}",
+                                    data={"advance": m.advance, "median": med, "class": cls}, **ctx))
         if median_xh > 0 and abs(m.x_height - median_xh) / median_xh > XH_TOL:
             findings.append(Finding("warn", "x_height_outlier",
                                     f"x-height {m.x_height:.3f} em deviates more than {XH_TOL:.0%} from the median {median_xh:.3f}",
