@@ -146,6 +146,12 @@ class GlyphStore:
         path = self.root / sample.strokes_path
         return StrokeData.model_validate_json(path.read_text(encoding="utf-8"))
 
+    def load_raster(self, sample: Sample) -> bytes | None:
+        """Read a sample's raster sidecar (PNG bytes), or None when the sample has no raster."""
+        if sample.raster_path is None:
+            return None
+        return (self.root / sample.raster_path).read_bytes()
+
     def targets(self) -> list[Target]:
         """The target catalog, ordered by label."""
         rows = self._conn.execute(

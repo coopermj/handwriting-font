@@ -167,3 +167,24 @@ def test_load_strokes_reads_sidecar_or_returns_none(tmp_path: Path):
 
     assert loaded == _strokes()
     assert missing is None
+
+
+def test_load_raster_reads_sidecar_bytes_or_returns_none(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    with_png = store.add_sample(_sample("s1", "a"), raster=b"\x89PNG_fake")
+    without = store.add_sample(_sample("s2", "a"))
+    got = store.load_raster(with_png)
+    missing = store.load_raster(without)
+    store.close()
+
+    assert got == b"\x89PNG_fake"
+    assert missing is None
+
+
+def test_load_raster_raises_when_sidecar_file_is_gone(tmp_path: Path):
+    store = GlyphStore.create(tmp_path / "store")
+    stored = store.add_sample(_sample("s1", "a"), raster=b"\x89PNG_fake")
+    (tmp_path / "store" / "raster" / "s1.png").unlink()
+    with pytest.raises(FileNotFoundError):
+        store.load_raster(stored)
+    store.close()
