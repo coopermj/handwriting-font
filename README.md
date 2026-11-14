@@ -21,9 +21,11 @@ Python 3.12+ is required; Homebrew's `python3.14` is known to work (3.15 lacks a
 
 ```bash
 python3.14 -m venv .venv
-.venv/bin/python -m pip install -e "packages/hwfont-schema[dev]" -e "packages/capture-template[dev]" -e "packages/ingest-segment[dev]" -e "packages/font-gen[dev,raster]"
+.venv/bin/python -m pip install -e "packages/hwfont-schema[dev]" -e "packages/capture-template[dev]" -e "packages/ingest-segment[dev]" -e "packages/font-gen[dev,raster]" -e "packages/review[dev,ui]"
 ```
 
 Run a package's tests from its directory, e.g. `cd packages/capture-template && ../../.venv/bin/python -m pytest -q`.
 
 Build the synthetic demo font with `font-gen demo --out some/dir --ttf` and open the `.proof.svg` it writes beside the font. How each host (browsers, Word) handles variant cycling across spaces is in [docs/font-gen-hosts.md](docs/font-gen-hosts.md).
+
+Review segmented candidates into a glyph store with the `review` CLI. Seed the store's targets with `review init --store S --sidecar capture.sidecar.json`, then run `review serve --store S --sidecar capture.sidecar.json --candidates DIR [--raster p0=page.png]` to open the canvas review UI at http://127.0.0.1:8765, or apply decisions headlessly with `review apply ... --accept ID`. Every decision is written through to the store and recorded in `review.json` beside `candidates.json`, and `review replay` rebuilds a store's samples from those files. Check progress against the targets with `review coverage`, then build the font with `font-gen build --store S --out Hand.otf`.
