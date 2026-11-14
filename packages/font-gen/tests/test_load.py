@@ -80,6 +80,10 @@ def test_convention_violation_and_raster_scale_mismatch(tmp_path):
     assert "s2" not in by_id
     assert by_id["s3"].raster is None and by_id["s3"].strokes is not None
     assert sum(f.code == "raster_scale_mismatch" for f in result.findings) == 2
+    # ruling R6 (spec 5.3 "additionally"): the violation string is a convention_violation as well
+    mismatch_cv = sorted(f.sample_id for f in result.findings if f.code == "convention_violation"
+                         and f.data["violation"].startswith("raster_scale_mismatch"))
+    assert mismatch_cv == ["s2", "s3"]
     assert sum(f.code == "sample_no_ink" for f in result.findings) == 0
 
 

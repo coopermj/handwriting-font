@@ -97,11 +97,10 @@ def _load_one(
 
     for violation in check_sample_em(sample, strokes, raster):
         code = violation.split(": ", 1)[0]
-        if code == RASTER_SCALE_MISMATCH:
+        flag("warn", "convention_violation", f"sample {sample.id}: {violation}", {"violation": violation})
+        if code == RASTER_SCALE_MISMATCH:  # ruling R6: additionally its own finding, and the raster is dropped
             flag("warn", RASTER_SCALE_MISMATCH, f"sample {sample.id}: raster dropped, {violation}", {"violation": violation})
             raster = None
-        else:
-            flag("warn", "convention_violation", f"sample {sample.id}: {violation}", {"violation": violation})
     if strokes is None and raster is None:
         return None
 

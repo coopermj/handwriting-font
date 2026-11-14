@@ -83,6 +83,7 @@ def test_truncation_transparent_singleton_and_ring_short(tmp_path):
     assert surplus.label == "a" and len(surplus.data["ids"]) == 2
     assert "Q" in plan.transparent and "space" in plan.transparent and "z" not in plan.transparent
     assert any(f.code == "ring_singleton" and f.glyph == "Q" and f.severity == "warn" for f in findings)
+    assert any(f.code == "ring_short" and f.label == "Q" and f.data["n"] == 1 for f in findings)   # R8: both fire for n == 1
     assert any(f.code == "ring_short" and f.label == "z" and f.data["n"] == 2 for f in findings)
     assert not any(f.code == "ring_short" and f.label == "a" for f in findings)
 
@@ -159,3 +160,19 @@ def test_empty_store_is_an_error_and_ring_not_prime(tmp_path):
     assert plan.names() == [".notdef", "space"]
     _, f6 = _plan(tmp_path / "6", [(_sample("a1", "a"), _strokes(), None)], ring_n=6)
     assert any(f.code == "ring_not_prime" for f in f6)
+
+
+def test_slots_after_the_medoid_are_goods_then_marginals_by_id(tmp_path):
+    # ruling R7: slot 0 is the medoid of the first non-empty group; slots >= 1 follow spec 6.5 only (all remaining
+    # goods by id, stroke and raster together, then all marginals by id): [g1, r1, m1], not [g1, m1, r1]
+    rows = [(_sample("g1", "a"), _strokes(), None), (_sample("m1", "a", quality=Quality.marginal), _strokes(), None),
+            (_sample("r1", "a"), None, _png())]
+    plan, _ = _plan(tmp_path, rows)
+    specs = {g.name: g for g in plan.glyphs}
+    assert [specs[n].sample_id for n in plan.rings[("a", None)]] == ["g1", "r1", "m1"]
+    rows = [(_sample("g2", "a"), _strokes(), None), (_sample("g1", "a"), _strokes(), None),
+            (_sample("m0", "a", quality=Quality.marginal), _strokes(), None), (_sample("r0", "a"), None, _png()),
+            (_sample("r9", "a", quality=Quality.marginal), None, _png())]
+    plan, _ = _plan(tmp_path / "2", rows)
+    specs = {g.name: g for g in plan.glyphs}
+    assert [specs[n].sample_id for n in plan.rings[("a", None)]] == ["g1", "g2", "r0", "m0", "r9"]

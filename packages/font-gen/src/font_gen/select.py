@@ -83,16 +83,18 @@ def medoid_index(samples: list[LoadedSample]) -> int:
 
 
 def ring_order(samples: list[LoadedSample]) -> list[LoadedSample]:
-    """Stroke goods, stroke marginals, raster goods, raster marginals; the first non-empty group leads with its medoid."""
+    """Ruling R7: slot 0 is the medoid of the first non-empty group of stroke goods, stroke marginals, raster goods,
+    raster marginals; slots >= 1 follow spec §6.5 only — every remaining good by id (stroke and raster together),
+    then every remaining marginal by id."""
     groups: list[list[LoadedSample]] = [[], [], [], []]
     for ls in sorted(samples, key=lambda s: s.sample.id):
         groups[(0 if ls.strokes is not None else 2) + (0 if ls.sample.quality == Quality.good else 1)].append(ls)
-    out: list[LoadedSample] = []
-    for group in groups:
-        if group and not out:
-            group.insert(0, group.pop(medoid_index(group)))
-        out.extend(group)
-    return out
+    lead = next((group for group in groups if group), None)
+    if lead is None:
+        return []
+    head = lead.pop(medoid_index(lead))
+    rest = sorted((ls for group in groups for ls in group), key=lambda s: (s.sample.quality != Quality.good, s.sample.id))
+    return [head, *rest]
 
 
 def sample_index(loaded: LoadResult) -> dict[str, LoadedSample]:
@@ -156,7 +158,7 @@ def plan_glyphs(loaded: LoadResult, *, ring_n: int = RING_N, pos_min: int = POS_
                 transparent.add(names[0])
                 findings.append(Finding("warn", "ring_singleton", f"ring {key} has one variant; {names[0]} will look stamped",
                                         label=label, glyph=names[0]))
-            elif n < ring_n:
+            if n < ring_n:  # ruling R8: a singleton is also short
                 findings.append(Finding("info", "ring_short", f"ring {key} has {n} of {ring_n} variants",
                                         label=label, data={"n": n}))
             goods = sum(ls.sample.quality == Quality.good for ls in ordered)
