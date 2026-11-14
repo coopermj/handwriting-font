@@ -120,3 +120,12 @@ Net rule: mandatory coverage (Phase 1 genuine + Phase 3 drills) is unbounded; op
 28 chars is a fixed estimate for "average" handwriting; writers with very large hands may still overrun, and very small hands leave the row underused. It is a `PageConfig` field, so it can be tuned per user without code changes.
 
 **The booklet roughly doubles in length.** Measured against the bundled corpus/targets: meeting coverage takes ~17 pages (184 rows) at `max_line_chars=80` but **~34 pages (365 rows) at 28** — narrower rows hold fewer glyphs, so more rows are needed for the same coverage. This is inherent to the ergonomics fix (readable handwriting needs the space), not incidental, and coverage-first makes the default booklet reach ~34 pages automatically rather than silently under-covering. If a ~34-page booklet is undesirable, the levers are lowering per-target `required_count` or trimming the target set — both out of scope here and independent of this change.
+
+## Amendment 1 (2026-11-14) — width re-measured on a real capture: 44, with `--line-chars`
+
+The 28-char default was an estimate from an assumed ~44 px handwriting advance. The first real reMarkable capture (a booklet generated at the pre-fix 80-char width; page 1 rows carried 60–67 units) measured the actual advance: **~20 px per unit** (row ink width ÷ expected units, 17–22 px on every written row), and rows with 60+ units overflowed the 1244 px writing row by up to 59 px. The owner asked for **1/2 to 2/3 as much text per line** as that booklet.
+
+- `max_line_chars` default becomes **44** (≈35 units ≈ 700 px, ~60 % of the row). 28 (≈22 units ≈ 450 px) would have left about two thirds of each row blank for this writer and doubled the booklet for nothing.
+- `generate(..., line_chars: int | None = None)` and the CLI flag `--line-chars N` override it per writer (the Known Risk above anticipated per-writer tuning; it is now a flag, not a code edit). `N < 1` is rejected.
+- Nothing else changes: coverage-first planning, row geometry, `DEFAULT_PAGES` as a variety floor. The `generate` test asserting the default moves to 44; new tests pin the override, its validation and the CLI flag.
+- Known Risk, restated: the 20 px advance is one writer on one page. A larger hand lowers `--line-chars`; the default is the owner's.

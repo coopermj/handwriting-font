@@ -287,7 +287,51 @@ def test_generate_wraps_long_quotation_into_multiple_regions(tmp_path):
 
 
 def test_default_config_uses_handwriting_line_width():
-    assert _default_config().max_line_chars == 28
+    # 2026-11-14 measurement: ~20px advance per unit on a real capture; 44 chars
+    # (~35 units) fills ~60% of the 1244px row.
+    assert _default_config().max_line_chars == 44
+
+
+def _row_texts(out_dir):
+    sidecar = CaptureSidecar.model_validate_json(
+        (out_dir / "capture.sidecar.json").read_text(encoding="utf-8")
+    )
+    return [r.expected_transcript for p in sidecar.pages for r in p.regions]
+
+
+def test_generate_line_chars_overrides_the_row_budget(tmp_path):
+    narrow = generate(None, None, tmp_path / "narrow", force=True, line_chars=20)
+    wide = generate(None, None, tmp_path / "wide", force=True, line_chars=60)
+    assert narrow.all_met and wide.all_met
+    narrow_rows, wide_rows = _row_texts(tmp_path / "narrow"), _row_texts(tmp_path / "wide")
+    # every row respects the budget unless it is a single over-long word
+    assert all(len(t) <= 20 or " " not in t for t in narrow_rows)
+    assert all(len(t) <= 60 or " " not in t for t in wide_rows)
+    # above the 44 default too, so a dropped override cannot pass the wide half
+    assert max(len(t) for t in wide_rows) > 44
+    assert len(narrow_rows) > len(wide_rows)
+
+
+def test_generate_rejects_non_positive_line_chars(tmp_path):
+    with pytest.raises(ValueError, match="line_chars"):
+        generate(None, None, tmp_path / "bad", force=True, line_chars=0)
+    assert not (tmp_path / "bad").exists()
+
+
+def test_cli_line_chars_flag(tmp_path):
+    rc = main(["--out", str(tmp_path / "cli"), "--line-chars", "30"])
+    assert rc == 0
+    rows = _row_texts(tmp_path / "cli")
+    assert all(len(t) <= 30 or " " not in t for t in rows)
+    assert max(len(t) for t in rows) == 30
+
+
+def test_cli_rejects_non_positive_line_chars(tmp_path, capsys):
+    with pytest.raises(SystemExit) as exc:
+        main(["--out", str(tmp_path / "cli"), "--line-chars", "0"])
+    assert exc.value.code == 2  # argparse usage error, before any output dir is created
+    assert "must be >= 1" in capsys.readouterr().err
+    assert not (tmp_path / "cli").exists()
 
 
 def test_generate_meets_coverage_at_default_config(tmp_path):

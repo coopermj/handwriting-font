@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import shutil
 from pathlib import Path
@@ -33,9 +34,12 @@ def _default_config() -> PageConfig:
         prompt_gap_px=12,
         line_height_px=70,
         row_pitch_px=150,
-        # sized for handwriting, not the print font: writing area ~1244px wide,
-        # handwritten glyph advance ~44px -> ~28 glyphs fit with right-margin slack.
-        max_line_chars=28,
+        # sized for handwriting, not the print font. Measured on a real reMarkable
+        # capture (2026-11-14): the writer's advance is ~20px per unit across the
+        # 1244px writing row, and 60+ units per row overflowed it. 44 chars is
+        # ~35 units, ~60% of the row: the owner asked for 1/2 to 2/3 of the old
+        # 80-char rows. Override per writer with `--line-chars`.
+        max_line_chars=44,
     )
 
 
@@ -47,9 +51,17 @@ def generate(
     force: bool = False,
     allow_unmet: bool = False,
     pages: int = DEFAULT_PAGES,
+    line_chars: int | None = None,
 ) -> PlanResult:
+    """Plan, lay out and render a capture booklet into `out_dir`.
+
+    `line_chars` overrides the config's `max_line_chars` (the per-row prompt budget
+    the writer copies by hand); None keeps the config's value.
+    """
     if pages < 1:
         raise ValueError(f"pages must be >= 1, got {pages}")
+    if line_chars is not None and line_chars < 1:
+        raise ValueError(f"line_chars must be >= 1, got {line_chars}")
     out_dir = Path(out_dir)
     if out_dir.exists() and not force:
         raise FileExistsError(f"output dir already exists: {out_dir} (use force=True to overwrite)")
@@ -57,6 +69,8 @@ def generate(
     out_dir.mkdir(parents=True, exist_ok=True)
     try:
         config = config or _default_config()
+        if line_chars is not None:
+            config = dataclasses.replace(config, max_line_chars=line_chars)
         targets = (
             load_target_spec(target_spec_path) if target_spec_path is not None else default_targets()
         )
@@ -124,6 +138,14 @@ def main(argv: list[str] | None = None) -> int:
             "grows as needed to meet glyph/ligature coverage"
         ),
     )
+    parser.add_argument(
+        "--line-chars", type=_positive_int, default=None,
+        help=(
+            f"max prompt characters per row (default: {_default_config().max_line_chars}, sized "
+            "for ~20px handwriting advance across the 1244px row); lower it for a large hand, "
+            "raise it for a small one"
+        ),
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -134,6 +156,7 @@ def main(argv: list[str] | None = None) -> int:
             force=args.force,
             allow_unmet=args.allow_unmet,
             pages=args.pages,
+            line_chars=args.line_chars,
         )
     except UnmetCoverageError as e:
         print(e)
