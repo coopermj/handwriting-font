@@ -177,6 +177,20 @@ def test_self_intersection_test_is_exact_where_the_area_heuristic_is_not():
     assert is_intersection_free(o.outline) and o.route == "qu2cu"        # ordinary glyphs ship on the first route
 
 
+
+def test_crossing_test_verdicts_do_not_depend_on_the_row_block(monkeypatch):
+    # the blocked, bbox-prefiltered pair scan must see pairs that straddle blocks exactly as one dense pass does
+    import font_gen.outline as outline_mod
+    two = Outline.from_recording(
+        [("moveTo", ((0, 0),)), ("lineTo", ((100, 0),)), ("lineTo", ((100, 100),)), ("lineTo", ((0, 100),)), ("closePath", ()),
+         ("moveTo", ((50, 50),)), ("lineTo", ((150, 50),)), ("lineTo", ((150, 150),)), ("lineTo", ((50, 150),)), ("closePath", ())])
+    cases = [(_outline(SQUARE), True), (_outline(CORRUPT), False), (two, False),
+             (_outline([(0, 0), (100, 0), (100, 100), (50, 100), (61, 101), (40, 101), (50, 100), (0, 100)]), True),
+             (outline_from_strokes(_strokes(_pts(_circle())), _metrics(x=0.1, y=0.1, w=0.4, h=0.4)).outline, True)]
+    for block in (1, 2, 3, 7, outline_mod.INTERSECT_BLOCK):
+        monkeypatch.setattr(outline_mod, "INTERSECT_BLOCK", block)
+        assert [is_intersection_free(o) for o, _ in cases] == [want for _, want in cases], block
+
 def test_elevation_fallback_is_exact_degree_elevation():
     p = pathops.Path()
     p.moveTo(0, 0); p.quadTo(50, 100, 100, 0); p.close()
