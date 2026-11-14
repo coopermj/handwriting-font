@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from font_gen.synth import synth_store
+
+if TYPE_CHECKING:
+    from font_gen.select import GlyphPlan
 
 FIXTURE_SPEC = {
     "a": {"medi": 5, "fina": 3, "init": 1}, "z": {"medi": 2}, "Q": {"isol": 1},
@@ -13,6 +17,23 @@ FIXTURE_SPEC = {
     "o": {"medi": 3}, "s": {"medi": 3},
 }
 E2E_EXTRAS = {"q": {"medi": 2}, "x": {"medi": 1}, "b": {"medi": 12}, "e": {"medi": 2}, "h": {"medi": 3}}  # h: so "the the the" uses real letters
+
+ALL4 = {"init": 1, "medi": 1, "fina": 1, "isol": 1}
+CYCLE_SPEC = {
+    "a": {"medi": 7, "init": 3, "fina": 3}, "b": {"medi": 7}, "t": {"medi": 7}, "h": {"medi": 7},
+    "e": {"medi": 7, "fina": 4}, "z": {"medi": 2}, ".": {"isol": 1}, "'": {"isol": 2}, "f": {"medi": 3},
+    "i": {"medi": 3}, "fi": ALL4, "ffi": ALL4,
+}
+# A punctuation ring of 2, so period is a ring member that both cycles and steps the counter (§9.6).
+PUNCT_SPEC = {"a": {"medi": 7}, ".": {"isol": 2}}
+LIGA_SPEC = {
+    **{c: {"medi": 3} for c in "fistrngoceaxhmbB"}, "fi": ALL4, "th": ALL4, "gh": ALL4,
+    # ffi is not medial: an unconditional ffi would win in office/affix (§9.3 longest-first)
+    "ffi": {"init": 1, "fina": 1, "isol": 1},
+    "str": {"fina": 2}, "st": {"init": 1, "fina": 1, "isol": 1}, "ff": {"fina": 3}, "ng": {"fina": 2},
+    "ing": {"fina": 3}, "tion": {"fina": 2},
+}
+LIGA2_SPEC = {**{c: {"medi": 3} for c in "stafibe"}, "a": {"init": 3, "medi": 3}, "st": {"fina": 3}, "ff": {"fina": 3}}
 
 
 def pytest_addoption(parser):
@@ -114,3 +135,20 @@ def build_stub_font(plan, fea_text: str) -> bytes:
     buf = BytesIO()
     fb.save(buf)
     return buf.getvalue()
+
+
+def stub_font_from_spec(tmp_dir: Path, spec, *, ring_n: int = 7, cycle_mode: str = "stream") -> tuple[bytes, GlyphPlan]:
+    """Synth store (no rasters) -> plan -> generated features -> compiled stub font, for shaping tests."""
+    from font_gen.features import generate_features
+    from font_gen.load import load_store
+    from font_gen.metrics import ligature_carets
+    from font_gen.select import plan_glyphs
+
+    store = synth_store(tmp_dir / "store", spec, seed=1, rasters=False)
+    try:
+        plan, _ = plan_glyphs(load_store(store), ring_n=ring_n)
+    finally:
+        store.close()
+    carets = ligature_carets(plan, {n: (500, 50) for n in plan.names()})
+    fea = generate_features(plan, carets, digest12="000000000000", cycle_mode=cycle_mode)
+    return build_stub_font(plan, fea), plan
