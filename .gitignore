@@ -15,3 +15,6 @@ build/
 
 # capture-template generated output
 packages/capture-template/hcpdf/
+
+# local virtualenv (python3.14; see README)
+.venv/
